@@ -63,6 +63,12 @@ func (c *Controller) reconcileRoot(ctx context.Context, ingress *networkingv1.In
 		return nil
 	}
 
+	// verifies custom hosts and if they are present and the flag is set to false
+	// the reconciliation will fail
+	if !*c.customHosts && validateCustomHosts(ingress, *c.domain) {
+		return fmt.Errorf("failed ingress '%s' reconciliation due to custom hosts", ingress.Name)
+	}
+
 	AddFinalizer(ingress, cascadeCleanupFinalizer)
 	if ingress.Annotations == nil || ingress.Annotations[hostGeneratedAnnotation] == "" {
 		// Let's assign it a global hostname if any
@@ -424,4 +430,13 @@ func removeFinalizer(ingress *networkingv1.Ingress, finalizer string) {
 			return
 		}
 	}
+}
+
+func validateCustomHosts(ingress *networkingv1.Ingress, gblbDomain string) bool {
+	for _, rule := range ingress.Spec.Rules {
+		if rule.Host != gblbDomain {
+			return true
+		}
+	}
+	return false
 }
