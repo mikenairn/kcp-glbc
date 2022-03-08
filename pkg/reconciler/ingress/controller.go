@@ -38,7 +38,7 @@ func NewController(config *ControllerConfig) *Controller {
 		dnsRecordClient:       config.DnsRecordClient,
 		domain:                config.Domain,
 		tracker:               newTracker(),
-		customHosts:           config.CustomHosts,
+		customHostsEnabled:    config.CustomHostsEnabled,
 	}
 
 	if config.EnvoyXDS != nil {
@@ -79,7 +79,7 @@ type ControllerConfig struct {
 	EnvoyXDS              *envoyserver.XdsServer
 	Domain                *string
 	EnvoyListenPort       *uint
-	CustomHosts           *bool
+	CustomHostsEnabled    *bool
 }
 
 type Controller struct {
@@ -94,7 +94,7 @@ type Controller struct {
 	cache                 *envoy.Cache
 	domain                *string
 	tracker               tracker
-	customHosts           *bool
+	customHostsEnabled    *bool
 }
 
 func (c *Controller) enqueue(obj interface{}) {
