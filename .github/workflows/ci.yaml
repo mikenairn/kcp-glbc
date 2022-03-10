@@ -15,7 +15,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
         with:
-          go-version: v1.17
+          go-version: v1.16
       - uses: golangci/golangci-lint-action@v2
         with:
           only-new-issues: true
@@ -28,7 +28,7 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
         with:
-          go-version: v1.17
+          go-version: v1.16
       - name: Check generate
         run: make verify-generate
 
@@ -39,6 +39,6 @@ jobs:
       - uses: actions/checkout@v2
       - uses: actions/setup-go@v2
         with:
-          go-version: v1.17
+          go-version: v1.16
       - run: make build
       - run: PATH="${PATH}:$(pwd)/bin/" make test
