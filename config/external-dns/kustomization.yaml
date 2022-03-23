@@ -1,0 +1,13 @@
+# Adds namespace to all resources.
+namespace: external-dns
+
+resources:
+  - namespace.yaml
+  - github.com/kubernetes-sigs/external-dns/kustomize?ref=v0.11.1
+
+#images:
+#  - name: k8s.gcr.io/external-dns/external-dns
+#    newTag: v0.11.1
+
+patchesStrategicMerge:
+  - patch_deployment_args.yaml

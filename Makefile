@@ -106,6 +106,25 @@ deploy: generate-crd kustomize generate-ld-config ## Deploy controller to the K8
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
 	$(KUSTOMIZE) build config/deploy/local | kubectl delete -f -
 
+# Install helm https://helm.sh/docs/intro/install/
+#
+# $ curl -fsSL -o get_helm.sh https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+# $ chmod 700 get_helm.sh
+# $ ./get_helm.sh
+# $ HELM_INSTALL_DIR=./bin USE_SUDO=false ./get_helm.sh
+#
+# Chart parameters: https://github.com/bitnami/charts/tree/master/bitnami/external-dns/#installing-the-chart
+.PHONY: deploy-external-dns
+deploy-external-dns: helm ## Deploy external dns
+	kubectl create --save-config ns external-dns --dry-run=client -o yaml | kubectl apply -f -
+	kubectl -n external-dns create secret generic external-dns-aws-credentials --from-literal=aws_access_key_id=${AWS_ACCESS_KEY_ID} --from-literal=aws_secret_access_key=${AWS_SECRET_ACCESS_KEY} | true
+	$(HELM) repo add bitnami https://charts.bitnami.com/bitnami
+	$(HELM) upgrade external-dns bitnami/external-dns --create-namespace -i -n external-dns -f ./config/external-dns/external-dns-values.yaml --set txtOwnerId=external-dns --set domainFilters[0]=mn.hcpapps.net --set zoneIdFilters[0]=Z04114632NOABXYWH93QU --set aws.credentials.secretKey=${AWS_SECRET_ACCESS_KEY} --set aws.credentials.accessKey=${AWS_ACCESS_KEY_ID}
+	kubectl -n external-dns wait --timeout=300s --for=condition=Available deployments --all
+
+.PHONY: undeploy-external-dns
+undeploy-external-dns: ## Deploy external dns
+
 ## Local Deployment
 LD_DIR=config/deploy/local
 LD_AWS_CREDS_ENV=$(LD_DIR)/aws-credentials.env
@@ -185,6 +204,11 @@ $(CONTROLLER_GEN):
 kind: $(KIND) ## Download kind locally if necessary.
 $(KIND):
 	GOBIN=$(LOCALBIN) go install sigs.k8s.io/kind@$(KIND_VERSION)
+
+HELM = $(shell pwd)/bin/helm
+HELM_VERSION = v3.8.1
+helm: ## Download helm locally if necessary.
+	./utils/install-helm.sh $(HELM) $(HELM_VERSION)
 
 KUSTOMIZE_INSTALL_SCRIPT ?= "https://raw.githubusercontent.com/kubernetes-sigs/kustomize/master/hack/install_kustomize.sh"
 .PHONY: kustomize

@@ -1,0 +1,14 @@
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
+metadata:
+  name: dnsendpoint-simple
+  annotations:
+    type: global
+spec:
+  endpoints:
+    - dnsName: dnsendpoint-simple.mn.hcpapps.net
+      recordTTL: 60
+      recordType: A
+      targets:
+        - 52.215.108.61
+        - 52.30.101.221

@@ -1,0 +1,30 @@
+apiVersion: externaldns.k8s.io/v1alpha1
+kind: DNSEndpoint
+metadata:
+  name: dnsendpoint-weighted
+  annotations:
+    type: global
+spec:
+  endpoints:
+    - dnsName: dnsendpoint-weighted.mn.hcpapps.net
+      recordTTL: 60
+      recordType: A
+      setIdentifier: 52.215.108.61
+      providerSpecific:
+        - name: "aws/weight"
+          value: "100"
+      labels:
+        id: 52.215.108.61
+      targets:
+        - 52.215.108.61
+    - dnsName: dnsendpoint-weighted.mn.hcpapps.net
+      recordTTL: 60
+      recordType: A
+      setIdentifier: 52.30.101.221
+      providerSpecific:
+        - name: "aws/weight"
+          value: "100"
+      labels:
+        id: 52.30.101.221
+      targets:
+        - 52.30.101.221

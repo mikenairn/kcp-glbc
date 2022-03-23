@@ -67,10 +67,15 @@ createGLBCCluster() {
   ${KIND_BIN} get kubeconfig --name=${KCP_GLBC_CLUSTER_NAME} > ${TEMP_DIR}/${KCP_GLBC_KUBECONFIG}
   ${KIND_BIN} get kubeconfig --internal --name=${KCP_GLBC_CLUSTER_NAME} > ${TEMP_DIR}/${KCP_GLBC_KUBECONFIG}.internal
 
+  kubectl config use-context kind-${KCP_GLBC_CLUSTER_NAME}
+
   echo "Deploying cert manager to kind glbc cluster"
   kubectl --context kind-${KCP_GLBC_CLUSTER_NAME} apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.7.1/cert-manager.yaml
-
   kubectl --context kind-${KCP_GLBC_CLUSTER_NAME} -n cert-manager wait --timeout=300s --for=condition=Available deployments --all
+
+  echo "Deploying external-dns to kind glbc cluster"
+  make deploy-external-dns
+
 }
 
 createCluster() {
