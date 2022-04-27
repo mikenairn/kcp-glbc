@@ -2,7 +2,8 @@ all: vendor build
 .PHONY: all
 
 SHELL := /bin/bash
-NUM_CLUSTERS:= 2
+NUM_CLUSTERS := 2
+KCP_BRANCH := release-prototype-2
 # go-get-tool will 'go get' any package $2 and install it to $1.
 # backing up and recovering the go.mod/go.sum as go install doesnt work
 # with project that use replacement directives, no time for a nicer solution.
@@ -35,7 +36,7 @@ kind:
 KCP = $(shell pwd)/bin/kcp
 kcp:
 	rm -rf ./tmp/kcp
-	git clone --depth=1 https://github.com/kcp-dev/kcp ./tmp/kcp
+	git clone --depth=1 --branch ${KCP_BRANCH} https://github.com/kuadrant/kcp ./tmp/kcp
 	cd ./tmp/kcp && make
 	cp ./tmp/kcp/bin/cluster-controller $(shell pwd)/bin
 	cp ./tmp/kcp/bin/compat $(shell pwd)/bin
@@ -51,18 +52,6 @@ kcp:
 .PHONY: local-setup
 local-setup: clean build kind kcp
 	./utils/local-setup.sh -c ${NUM_CLUSTERS}
-
-.PHONY: aws-setup
-aws-setup: clean kcp
-	./utils/aws-setup.sh --deploy
-
-.PHONY: aws-setup-clean
-aws-setup-clean:
-	./utils/aws-setup.sh --clean
-
-codegen:
-	./hack/update-codegen.sh
-.PHONY: codegen
 
 .PHONY: clean
 clean:
@@ -83,7 +72,7 @@ generate-client:
 
 CONTROLLER_GEN = $(shell pwd)/bin/controller-gen
 controller-gen: ## Download controller-gen locally if necessary.
-	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.7.0)
+	$(call go-get-tool,$(CONTROLLER_GEN),sigs.k8s.io/controller-tools/cmd/controller-gen@v0.8.0)
 
 # go-get-tool will 'go get' any package $2 and install it to $1.
 PROJECT_DIR := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
