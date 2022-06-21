@@ -129,6 +129,11 @@ createUserWorkloadCluster() {
   echo "Deploying kcp syncer to ${1}"
   kubectl --kubeconfig=.kcp/admin.kubeconfig create namespace kcp-syncer --dry-run=client -o yaml | kubectl --kubeconfig=.kcp/admin.kubeconfig apply -f -
   KUBECONFIG=.kcp/admin.kubeconfig ${KUBECTL_KCP_BIN} workload sync ${clusterName} --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services >${TEMP_DIR}/${clusterName}-syncer.yaml
+
+  # Enable advanced scheduling
+  kubectl --kubeconfig=.kcp/admin.kubeconfig annotate --overwrite workloadcluster ${clusterName} featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
+  kubectl --kubeconfig=.kcp/admin.kubeconfig get workloadclusters ${clusterName} -o json | jq .metadata.annotations
+
   kubectl apply -f ${TEMP_DIR}/${clusterName}-syncer.yaml
 }
 
@@ -182,10 +187,20 @@ for cluster in $CLUSTERS; do
   port443=$((port443 + 1))
 done
 KUBECONFIG=.kcp/admin.kubeconfig kubectl wait --timeout=300s --for=condition=Ready=true workloadclusters --all
-KUBECONFIG=.kcp/admin.kubeconfig kubectl apply -f ./utils/kcp-contrib/location.yaml
+## ToDo Remove location, do we even need it?
+#KUBECONFIG=.kcp/admin.kubeconfig kubectl apply -f ./utils/kcp-contrib/location.yaml
 
 #6. Switch to user workspace
 KUBECONFIG=.kcp/admin.kubeconfig ${KUBECTL_KCP_BIN} workspace use "root:default:kcp-glbc-user"
+kubectl --kubeconfig=.kcp/admin.kubeconfig label namespace default experimental.workloads.kcp.dev/scheduling-disabled="true"
+
+#kubectl --kubeconfig=.kcp/admin.kubeconfig create namespace demo --dry-run=client -o yaml | kubectl --kubeconfig=.kcp/admin.kubeconfig apply -f -
+#kubectl --kubeconfig=.kcp/admin.kubeconfig label namespace demo experimental.workloads.kcp.dev/scheduling-disabled="true" --overwrite
+
+kubectl --kubeconfig=.kcp/admin.kubeconfig label secret $(kubectl --kubeconfig=.kcp/admin.kubeconfig get secrets -o=jsonpath='{.items[?(@..annotations.kubernetes\.io/service-account\.name=="default")].metadata.name}') state.internal.workload.kcp.dev/kcp-cluster-1=Sync state.internal.workload.kcp.dev/kcp-cluster-2=Sync --overwrite
+kubectl --kubeconfig=.kcp/admin.kubeconfig label configmap kube-root-ca.crt state.internal.workload.kcp.dev/kcp-cluster-1=Sync state.internal.workload.kcp.dev/kcp-cluster-2=Sync --overwrite
+kubectl --kubeconfig=.kcp/admin.kubeconfig label namespace default state.internal.workload.kcp.dev/kcp-cluster-1=Sync state.internal.workload.kcp.dev/kcp-cluster-2=Sync --overwrite
+
 
 echo ""
 echo "KCP PID          : ${KCP_PID}"
