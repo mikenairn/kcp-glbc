@@ -52,7 +52,7 @@ KUBECONFIG_KCP_ADMIN=.kcp/admin.kubeconfig
 
 KUBECTL_KCP_BIN="./bin/kubectl-kcp"
 
-: ${KCP_VERSION:="release-0.7"}
+: ${KCP_VERSION:="main"}
 KCP_SYNCER_IMAGE="ghcr.io/kcp-dev/kcp/syncer:${KCP_VERSION}"
 
 crc config set enable-cluster-monitoring true

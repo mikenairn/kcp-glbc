@@ -71,7 +71,7 @@ ORG_WORKSPACE=root:default
 KUBECONFIG_KCP_ADMIN=.kcp/admin.kubeconfig
 KUBECONFIG_KCP_GLBC=${TEMP_DIR}/kcp.kubeconfig
 
-: ${KCP_VERSION:="release-0.7"}
+: ${KCP_VERSION:="main"}
 KCP_SYNCER_IMAGE="ghcr.io/kcp-dev/kcp/syncer:${KCP_VERSION}"
 
 : ${GLBC_DEPLOY_COMPONENTS:="cert-manager"}

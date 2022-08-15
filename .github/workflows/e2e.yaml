@@ -156,7 +156,7 @@ jobs:
 
           echo "Create User sync targets"
           KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workspace use "root:default:kcp-glbc-user-compute"
-          export KCP_SYNCER_IMAGE=ghcr.io/kcp-dev/kcp/syncer:release-0.7
+          export KCP_SYNCER_IMAGE=ghcr.io/kcp-dev/kcp/syncer:main
           KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workload sync kcp-cluster-1 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${TEMP_DIR}/kcp-cluster-1-syncer.yaml
           KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workload sync kcp-cluster-2 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${TEMP_DIR}/kcp-cluster-2-syncer.yaml
 
