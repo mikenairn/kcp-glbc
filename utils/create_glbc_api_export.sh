@@ -21,9 +21,9 @@ source "${DEPLOY_SCRIPT_DIR}"/.setupEnv
 source "${DEPLOY_SCRIPT_DIR}"/.startUtils
 
 #Workspace
-GLBC_WORKSPACE=root:default:kcp-glbc
-GLBC_WORKSPACE_USER=root:default:kcp-glbc-user
-GLBC_EXPORT_NAME="glbc-${GLBC_WORKSPACE_USER//:/-}"
+GLBC_WORKSPACE=root:default
+GLBC_WORKSPACE_USER=root:default
+GLBC_EXPORT_NAME="glbc"
 
 ############################################################
 # Help                                                     #
@@ -102,18 +102,22 @@ spec:
     workspace:
       path: ${path}
       exportName: ${exportName}
-  acceptedPermissionClaims:
+  permissionClaims:
     - group: ""
       resource: "secrets"
+      state: "Accepted"
     - group: ""
       resource: "services"
       identityHash: ${identityHash}
+      state: "Accepted"
     - group: "apps"
       resource: "deployments"
       identityHash: ${identityHash}
+      state: "Accepted"
     - group: "networking.k8s.io"
       resource: "ingresses"
       identityHash: ${identityHash}
+      state: "Accepted"
 EOF
   kubectl wait --timeout=120s --for=condition=Ready=true apibinding $name
 }

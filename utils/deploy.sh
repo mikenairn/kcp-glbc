@@ -22,15 +22,10 @@ source "${DEPLOY_SCRIPT_DIR}"/.setupEnv
 source "${DEPLOY_SCRIPT_DIR}"/.startUtils
 
 #Workspace
-ORG_WORKSPACE=root:default
-GLBC_WORKSPACE=kcp-glbc
-GLBC_WORKSPACE_COMPUTE=${GLBC_WORKSPACE}-compute
-GLBC_WORKSPACE_USER=${GLBC_WORKSPACE}-user
-GLBC_WORKSPACE_USER_COMPUTE=${GLBC_WORKSPACE_USER}-compute
+GLBC_WORKSPACE=root:default
 
 #Workload clusters
 : ${GLBC_WORKLOAD_CLUSTER_NAME:=glbc}
-: ${GLBC_USER_WORKLOAD_CLUSTER_NAME:=glbc-user}
 
 : ${KCP_VERSION:="main"}
 KCP_SYNCER_IMAGE="ghcr.io/kcp-dev/kcp/syncer:${KCP_VERSION}"
@@ -45,18 +40,17 @@ GLBC_KUSTOMIZATION=${KCP_GLBC_DIR}/config/deploy/local
 ############################################################
 help()
 {
-   # Display Help
-   echo "Prepares a KCP workspace and deploys GLBC and its dependant components into it."
-   echo
-   echo "Syntax: deploy.sh [-c|k|m|n|h|w|W]"
-   echo "options:"
-   echo "c     Components to deploy (default: ${DEPLOY_COMPONENTS})"
-   echo "k     GLBC deployment kustomization directory (default: ${GLBC_KUSTOMIZATION})"
-   echo "n     Namespace glbc is being deployed into (default: ${GLBC_NAMESPACE})"
-   echo "h     Print this Help."
-   echo "w     Workspace to create and use for deployment (default: ${GLBC_WORKSPACE})."
-   echo "W     Organisation workspace (default: ${ORG_WORKSPACE})."
-   echo
+  # Display Help
+  echo "Prepares a KCP workspace and deploys GLBC and its dependant components into it."
+  echo
+  echo "Syntax: deploy.sh [-c|k|m|n|h|w]"
+  echo "options:"
+  echo "c     Components to deploy (default: ${DEPLOY_COMPONENTS})"
+  echo "k     GLBC deployment kustomization directory (default: ${GLBC_KUSTOMIZATION})"
+  echo "n     Namespace glbc is being deployed into (default: ${GLBC_NAMESPACE})"
+  echo "h     Print this Help."
+  echo "w     Workspace to deplpy glbc into (default: ${GLBC_WORKSPACE})."
+  echo
 }
 
 ############################################################
@@ -121,7 +115,7 @@ create_ns() {
   kubectl create namespace ${1} --dry-run=client -o yaml | kubectl apply -f -
 }
 
-create_workload_cluster() {
+create_sync_target() {
   kubectl get synctargets ${GLBC_WORKLOAD_CLUSTER_NAME} || {
     echo "Creating workload cluster '${1}'"
     ${KUBECTL_KCP_BIN} workload sync ${1} --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${OUTPUT_DIR}/${1}-syncer.yaml
@@ -130,6 +124,8 @@ create_workload_cluster() {
     echo "   kubectl apply -f ${OUTPUT_DIR}/${1}-syncer.yaml"
     echo ""
   }
+  kubectl annotate --overwrite synctarget ${1} featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
+
   kubectl wait --timeout=60s --for=condition=VirtualWorkspaceURLsReady=true apiexport kubernetes
 
   if [[ $WAIT_WC_READY = "true" ]]; then
@@ -161,17 +157,6 @@ deploy_glbc() {
   kubectl -n ${GLBC_NAMESPACE} wait --timeout=300s --for=condition=Available deployments --all
 }
 
-deploy_glbc_observability() {
-    echo "Deploying GLBC Observability"
-    create_ns "kcp-glbc-observability"
-    ## Deploy Grafana
-    wait_for "${KUSTOMIZE_BIN} build config/observability/kubernetes/grafana/ | kubectl apply -f -" "grafana" "1m" "5"
-    echo "Waiting for Observability deployments to be ready..."
-    kubectl -n kcp-glbc-observability wait --timeout=300s --for=condition=Available deployments --all
-    ## Deploy Pod Monitor for kcp-glbc
-    ${KUSTOMIZE_BIN} build config/prometheus/ | kubectl -n ${GLBC_NAMESPACE} apply -f -
-}
-
 ############################################################
 # Script Start                                             #
 ############################################################
@@ -193,12 +178,6 @@ while getopts "c:k:n:hw:W:" arg; do
       ;;
     w)
       GLBC_WORKSPACE=${OPTARG}
-      GLBC_WORKSPACE_COMPUTE=${GLBC_WORKSPACE}-compute
-      GLBC_WORKSPACE_USER=${GLBC_WORKSPACE}-user
-      GLBC_WORKSPACE_USER_COMPUTE=${GLBC_WORKSPACE_USER}-compute
-      ;;
-    W)
-      ORG_WORKSPACE=${OPTARG}
       ;;
     *)
       help
@@ -223,31 +202,25 @@ print_env
 echo "Continuing in 10 seconds, Ctrl+C to stop ..."
 sleep 10
 
-############################################################
-# GLBC Compute Service Workspace (kcp-glbc-compute)        #
-############################################################
+${KUBECTL_KCP_BIN} workspace use ${GLBC_WORKSPACE}
 
-## Create glbc compute service workspace if it doesn't already exist
-${KUBECTL_KCP_BIN} workspace use ${ORG_WORKSPACE}
-${KUBECTL_KCP_BIN} workspace create ${GLBC_WORKSPACE_COMPUTE} --enter || ${KUBECTL_KCP_BIN} workspace use ${GLBC_WORKSPACE_COMPUTE}
+############################################################
+# Create glbc sync target                                  #
+############################################################
 
 ## Create GLBC workload cluster
 kubectl create namespace kcp-syncer --dry-run=client -o yaml | kubectl apply -f -
-create_workload_cluster ${GLBC_WORKLOAD_CLUSTER_NAME}
+create_sync_target ${GLBC_WORKLOAD_CLUSTER_NAME}
 
 ## Add location
 kubectl apply -f ${KCP_GLBC_DIR}/utils/kcp-contrib/location.yaml
 
 ############################################################
-# GLBC Workspace (kcp-glbc)                                #
+# Register APIs                             #
 ############################################################
 
-## Create glbc workspace if it doesn't already exist
-${KUBECTL_KCP_BIN} workspace use ${ORG_WORKSPACE}
-${KUBECTL_KCP_BIN} workspace create ${GLBC_WORKSPACE} --enter || ${KUBECTL_KCP_BIN} workspace use ${GLBC_WORKSPACE}
-
 ## Bind to compute APIs
-create_api_binding "kubernetes" "kubernetes" "${ORG_WORKSPACE}:${GLBC_WORKSPACE_COMPUTE}"
+create_api_binding "kubernetes" "kubernetes" "${GLBC_WORKSPACE}"
 
 ## Register the Pod API (required by cert-manager)
 kubectl apply -f ${KCP_GLBC_DIR}/utils/kcp-contrib/crds/pods.yaml
@@ -258,38 +231,13 @@ kubectl apply -f ${KCP_GLBC_DIR}/utils/kcp-contrib/apiresourceschema.yaml
 ## Register CertManager APIs
 kubectl apply -f ${KCP_GLBC_DIR}/config/cert-manager/certificates-apiresourceschema.yaml
 kubectl apply -f ${KCP_GLBC_DIR}/config/cert-manager/cert-manager-apiexport.yaml
-create_api_binding "cert-manager" "cert-manager-stable" "${ORG_WORKSPACE}:${GLBC_WORKSPACE}"
-
-###############################################################
-# GLBC User Compute Service Workspace (kcp-glbc-user-compute) #
-###############################################################
-
-## Create glbc user compute service workspace if it doesn't already exist
-${KUBECTL_KCP_BIN} workspace use ${ORG_WORKSPACE}
-${KUBECTL_KCP_BIN} workspace create ${GLBC_WORKSPACE_USER_COMPUTE} --enter || ${KUBECTL_KCP_BIN} workspace use ${GLBC_WORKSPACE_USER_COMPUTE}
-
-## Create User workload cluster
-kubectl create namespace kcp-syncer --dry-run=client -o yaml | kubectl apply -f -
-create_workload_cluster ${GLBC_USER_WORKLOAD_CLUSTER_NAME}
-
-## Add location
-kubectl apply -f ${KCP_GLBC_DIR}/utils/kcp-contrib/location.yaml
-
-############################################################
-# GLBC User Workspace (kcp-glbc-user)                      #
-############################################################
-
-## Create glbc user workspace if it doesn't already exist
-${KUBECTL_KCP_BIN} workspace use ${ORG_WORKSPACE}
-${KUBECTL_KCP_BIN} workspace create ${GLBC_WORKSPACE_USER} --enter || ${KUBECTL_KCP_BIN} workspace use ${GLBC_WORKSPACE_USER}
-## Bind to compute APIs
-create_api_binding "kubernetes" "kubernetes" "${ORG_WORKSPACE}:${GLBC_WORKSPACE_USER_COMPUTE}"
+create_api_binding "cert-manager" "cert-manager-stable" "${GLBC_WORKSPACE}"
 
 ############################################################
 # Setup GLBC APIExport                                     #
 ############################################################
 
-if ${DEPLOY_SCRIPT_DIR}/create_glbc_api_export.sh -w "${ORG_WORKSPACE}:${GLBC_WORKSPACE_USER}" -W "${ORG_WORKSPACE}:${GLBC_WORKSPACE}" -n "glbc" ; then
+if ${DEPLOY_SCRIPT_DIR}/create_glbc_api_export.sh -w "${GLBC_WORKSPACE}" -W "${GLBC_WORKSPACE}" -n "glbc"; then
   echo "GLBC APIExport created successfully for ${ORG_WORKSPACE}:${GLBC_WORKSPACE_USER} workspace!"
 else
   echo "GLBC APIExport could not be created!"
@@ -301,8 +249,6 @@ fi
 # Deploy GLBC Components                                   #
 ############################################################
 
-${KUBECTL_KCP_BIN} workspace use ${ORG_WORKSPACE}:${GLBC_WORKSPACE}
-
 ## Deploy components
 if [[ $DEPLOY_COMPONENTS =~ "cert-manager" ]]; then
   deploy_cert_manager
@@ -310,16 +256,13 @@ fi
 
 if [[ $DEPLOY_COMPONENTS =~ "glbc" ]]; then
   deploy_glbc
-  if [[ $DEPLOY_COMPONENTS =~ "observability" ]]; then
-    deploy_glbc_observability
-  fi
 
   echo ""
   echo "GLBC is now running."
   echo ""
   echo "Try deploying the sample service:"
   echo ""
-  echo "     ${KUBECTL_KCP_BIN} workspace use ${ORG_WORKSPACE}:${GLBC_WORKSPACE_USER}"
+  echo "     ${KUBECTL_KCP_BIN} workspace use ${GLBC_WORKSPACE_USER}"
   echo "     kubectl apply -f samples/echo-service/echo.yaml"
   echo ""
 fi
