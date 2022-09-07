@@ -111,6 +111,8 @@ jobs:
           TEMP_DIR="$(pwd)/tmp"
           mkdir -p "${TEMP_DIR}"
 
+          make kustomize
+
           echo "Deploying Ingress controller to KinD workload clusters"
           VERSION=controller-v1.2.1
 
@@ -144,31 +146,35 @@ jobs:
             exit 1
           fi
 
+          GLBC_DEPLOYMENTS_DIR=config/deploy
+          KUSTOMIZATION_DIR=${GLBC_DEPLOYMENTS_DIR}/local
+          SYNC_TARGETS_DIR=${GLBC_DEPLOYMENTS_DIR}/sync-targets
+
           KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workspace use "root"
           KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workspace create "kuadrant" --type universal --enter
 
           echo "Setup workspace root:kuadrant"
-          KUBECONFIG=.kcp/admin.kubeconfig OUTPUT_DIR=${TEMP_DIR} ./utils/deploy.sh -c "none"
+          KUBECONFIG=.kcp/admin.kubeconfig ./utils/deploy.sh -k ${KUSTOMIZATION_DIR} -c "none"
 
           echo "Applying syncer to the GLBC physical cluster"
           kubectl config use-context kind-kcp-cluster-glbc-control
-          kubectl apply -f ${TEMP_DIR}/glbc-syncer.yaml
+          kubectl apply -f ${SYNC_TARGETS_DIR}/glbc-syncer.yaml
 
           echo "Checking glbc synctarget is ready"
           KUBECONFIG=.kcp/admin.kubeconfig kubectl wait --timeout=300s --for=condition=Ready=true synctargets "glbc"
 
           echo "Create User sync targets"
           export KCP_SYNCER_IMAGE=ghcr.io/kcp-dev/kcp/syncer:release-0.7
-          KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workload sync kcp-cluster-1 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${TEMP_DIR}/kcp-cluster-1-syncer.yaml
-          KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workload sync kcp-cluster-2 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${TEMP_DIR}/kcp-cluster-2-syncer.yaml
+          KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workload sync kcp-cluster-1 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${SYNC_TARGETS_DIR}/kcp-cluster-1-syncer.yaml
+          KUBECONFIG=.kcp/admin.kubeconfig ./bin/kubectl-kcp workload sync kcp-cluster-2 --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${SYNC_TARGETS_DIR}/kcp-cluster-2-syncer.yaml
 
           echo "Enabling advanced scheduling on user sync targets"
           KUBECONFIG=.kcp/admin.kubeconfig kubectl annotate --overwrite synctarget kcp-cluster-1 featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
           KUBECONFIG=.kcp/admin.kubeconfig kubectl annotate --overwrite synctarget kcp-cluster-2 featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
 
           echo "Applying syncers to the user physical clusters"
-          kubectl --context kind-kcp-cluster-1 apply -f ${TEMP_DIR}/kcp-cluster-1-syncer.yaml
-          kubectl --context kind-kcp-cluster-2 apply -f ${TEMP_DIR}/kcp-cluster-2-syncer.yaml
+          kubectl --context kind-kcp-cluster-1 apply -f ${SYNC_TARGETS_DIR}/kcp-cluster-1-syncer.yaml
+          kubectl --context kind-kcp-cluster-2 apply -f ${SYNC_TARGETS_DIR}/kcp-cluster-2-syncer.yaml
 
           echo "Checking all user synctargets are ready"
           KUBECONFIG=.kcp/admin.kubeconfig kubectl wait --timeout=300s --for=condition=Ready=true synctargets kcp-cluster-1 kcp-cluster-2
@@ -182,10 +188,9 @@ jobs:
           KUBECONFIG=.kcp/admin.kubeconfig kubectl get synctargets kcp-cluster-2 -o json | jq .metadata.annotations
 
           echo "Create the GLBC APIExport after all the clusters have synced and deploy GLBC components (cert-manager)"
-          KUBECONFIG=.kcp/admin.kubeconfig OUTPUT_DIR=${TEMP_DIR} GLBC_USER_WORKLOAD_CLUSTER_NAME=kcp-cluster-1 ./utils/deploy.sh -c "cert-manager"
+          KUBECONFIG=.kcp/admin.kubeconfig ./utils/deploy.sh -k ${KUSTOMIZATION_DIR} -c "cert-manager"
 
           echo "Create the kcp-glbc namespace, kcp-glbc-controller-manager service account and generate a kubeconfig for access"
-          make kustomize
           KUBECONFIG=.kcp/admin.kubeconfig ./utils/create_glbc_kubeconfig.sh -o ${TEMP_DIR}/kcp.kubeconfig
 
           echo "Check GLBC APIExport and APIBinding"
@@ -204,7 +209,7 @@ jobs:
           KUBECONFIG=.kcp/admin.kubeconfig kubectl apply -n kcp-glbc -f ${TEMP_DIR}/issuer.yaml
 
           echo "Export GLBC CI Cluster Config Enviornment"
-          export $(cat ./config/deploy/local/controller-config.env.ci | xargs)
+          export $(cat ./config/deploy/local/kcp-glbc/controller-config.env.ci | xargs)
 
           GLBC_LOG_FILE="${TEMP_DIR}"/glbc.log
           echo "GLBC_LOG_FILE=${GLBC_LOG_FILE}" >> $GITHUB_ENV
@@ -235,7 +240,7 @@ jobs:
           echo "Exporting CLUSTERS_KUBECONFIG_DIR=${CLUSTERS_KUBECONFIG_DIR}"
 
           echo "Export GLBC CI Cluster Config Enviornment"
-          export $(cat ./config/deploy/local/controller-config.env.ci | xargs)
+          export $(cat ./config/deploy/local/kcp-glbc/controller-config.env.ci | xargs)
 
           echo "Creating cluster kubeconfigs in ${CLUSTERS_KUBECONFIG_DIR}"
           kind get kubeconfig --name=kcp-cluster-1 > "${CLUSTERS_KUBECONFIG_DIR}"/kcp-cluster-1.kubeconfig
@@ -254,7 +259,7 @@ jobs:
           echo "Exporting KUBECONFIG=${KUBECONFIG}"
 
           echo "Export GLBC CI Cluster Config Enviornment"
-          export $(cat ./config/deploy/local/controller-config.env.ci | xargs)
+          export $(cat ./config/deploy/local/kcp-glbc/controller-config.env.ci | xargs)
 
           echo "TEST_INGRESS_COUNT = ${{ env.TEST_INGRESS_COUNT }}"
           echo "TEST_DNSRECORD_COUNT = ${{ env.TEST_DNSRECORD_COUNT }}"

@@ -71,6 +71,6 @@ terraform.rc
 
 demo
 
-config/deploy/local/*.kubeconfig
-config/deploy/local/*.env
-config/deploy/_*
+config/deploy/local/**/*.kubeconfig
+config/deploy/local/**/*.env
+config/deploy/**/_*

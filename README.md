@@ -101,7 +101,7 @@ make local-setup
 
 Run the controller with the same environment as CI ([e2e](.github/workflows/e2e.yaml)):
 ```bash
-(export $(cat ./config/deploy/local/controller-config.env.ci | xargs) && \
+(export $(cat ./config/deploy/local/kcp-glbc/controller-config.env.ci | xargs) && \
 KUBECONFIG=./tmp/kcp.kubeconfig ./bin/kcp-glbc)
 ```
 
@@ -110,7 +110,7 @@ KUBECONFIG=./tmp/kcp.kubeconfig ./bin/kcp-glbc)
 Run the e2e tests:
 
 ```bash
-(export $(cat ./config/deploy/local/controller-config.env.ci | xargs) && \
+(export $(cat ./config/deploy/local/kcp-glbc/controller-config.env.ci | xargs) && \
 export KUBECONFIG="$(pwd)"/.kcp/admin.kubeconfig && \
 export CLUSTERS_KUBECONFIG_DIR="$(pwd)/tmp" && \
 make e2e)
@@ -119,7 +119,7 @@ make e2e)
 Run the performance tests:
 
 ```bash
-(export $(cat ./config/deploy/local/controller-config.env.ci | xargs) && \
+(export $(cat ./config/deploy/local/kcp-glbc/controller-config.env.ci | xargs) && \
 export KUBECONFIG="$(pwd)"/.kcp/admin.kubeconfig &&
 make performance TEST_DNSRECORD_COUNT=1 TEST_INGRESS_COUNT=1)
 ```

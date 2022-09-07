@@ -119,9 +119,9 @@ Note: 'kubectl ws' now matches 'cd' semantics: go to home workspace. 'kubectl ws
 
 Create kubernetes and glbc APIBindings
 ```shell
-$ kubectl apply -f tmp/kubernetes-root-kuadrant-apibinding.yaml
+$ kubectl apply -f config/deploy/local/kcp-glbc/apiexports/root-kuadrant-kubernetes-apibinding.yaml
 apibinding.apis.kcp.dev/kubernetes created
-$ kubectl apply -f tmp/glbc-apibinding.yaml 
+$ kubectl apply -f config/deploy/local/kcp-glbc/apiexports/root-kuadrant-glbc-apibinding.yaml 
 apibinding.apis.kcp.dev/glbc created
 ```
 

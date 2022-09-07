@@ -74,6 +74,9 @@ KUBECONFIG_KCP_GLBC=${TEMP_DIR}/kcp.kubeconfig
 : ${KCP_VERSION:="release-0.7"}
 KCP_SYNCER_IMAGE="ghcr.io/kcp-dev/kcp/syncer:${KCP_VERSION}"
 
+: ${GLBC_DEPLOYMENTS_DIR=${KCP_GLBC_DIR}/config/deploy}
+: ${KUSTOMIZATION_DIR=${GLBC_DEPLOYMENTS_DIR}/local}
+: ${SYNC_TARGETS_DIR:=${GLBC_DEPLOYMENTS_DIR}/sync-targets}
 : ${GLBC_DEPLOY_COMPONENTS:="cert-manager"}
 
 for ((i=1;i<=$NUM_CLUSTERS;i++))
@@ -110,6 +113,7 @@ nodes:
     protocol: TCP
 EOF
 
+  #Note: these aren't used anymore, but leaving for now since the e2e tests still refers to a directory with these kubeconfigs in it
   ${KIND_BIN} get kubeconfig --name=${cluster} > ${TEMP_DIR}/${cluster}.kubeconfig
   ${KIND_BIN} get kubeconfig --internal --name=${cluster} > ${TEMP_DIR}/${cluster}.kubeconfig.internal
 }
@@ -133,7 +137,7 @@ createKINDSyncTarget() {
   createKINDCluster $1 $2 $3 $4
   echo "Deploying kcp syncer to ${1}"
   KUBECONFIG=${KUBECONFIG_KCP_ADMIN} kubectl create namespace kcp-syncer --dry-run=client -o yaml | kubectl --kubeconfig=${KUBECONFIG_KCP_ADMIN} apply -f -
-  KUBECONFIG=${KUBECONFIG_KCP_ADMIN} ${KUBECTL_KCP_BIN} workload sync ${clusterName} --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${TEMP_DIR}/${clusterName}-syncer.yaml
+  KUBECONFIG=${KUBECONFIG_KCP_ADMIN} ${KUBECTL_KCP_BIN} workload sync ${clusterName} --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${SYNC_TARGETS_DIR}/${clusterName}-syncer.yaml
 
   # Enable advanced scheduling
   echo "Enabling advanced scheduling"
@@ -141,7 +145,7 @@ createKINDSyncTarget() {
   KUBECONFIG=${KUBECONFIG_KCP_ADMIN} kubectl label --overwrite synctarget ${clusterName} kuadrant.dev/synctarget=${clusterName}
   KUBECONFIG=${KUBECONFIG_KCP_ADMIN} kubectl get synctargets ${clusterName} -o json | jq .metadata.annotations
 
-  kubectl apply -f ${TEMP_DIR}/${clusterName}-syncer.yaml
+  kubectl apply -f ${SYNC_TARGETS_DIR}/${clusterName}-syncer.yaml
 }
 
 #Delete existing kind clusters
@@ -173,11 +177,11 @@ KUBECONFIG=${KUBECONFIG_KCP_ADMIN} ${KUBECTL_KCP_BIN} workspace use "root"
 KUBECONFIG=${KUBECONFIG_KCP_ADMIN} ${KUBECTL_KCP_BIN} workspace create "kuadrant" --type universal --enter
 
 #2. Setup workspace root:kuadrant
-KUBECONFIG=${KUBECONFIG_KCP_ADMIN} OUTPUT_DIR=${TEMP_DIR} ${SCRIPT_DIR}/deploy.sh -c "none"
+KUBECONFIG=${KUBECONFIG_KCP_ADMIN} ${SCRIPT_DIR}/deploy.sh -k "${KUSTOMIZATION_DIR}" -c "none"
 
 #3. Create GLBC sync target and wait for it to be ready
 createKINDCluster $KCP_GLBC_CLUSTER_NAME 8081 8444 "glbc"
-kubectl apply -f ${TEMP_DIR}/glbc-syncer.yaml
+kubectl apply -f ${GLBC_DEPLOYMENTS_DIR}/sync-targets/glbc-syncer.yaml
 
 KUBECONFIG=${KUBECONFIG_KCP_ADMIN} ${KUBECTL_KCP_BIN} workspace use "${GLBC_WORKSPACE}"
 KUBECONFIG=${KUBECONFIG_KCP_ADMIN} kubectl wait --timeout=300s --for=condition=Ready=true synctargets "glbc"
@@ -196,7 +200,7 @@ if [ -n "$CLUSTERS" ]; then
 fi
 
 #5.Create the GLBC APIExport after all the clusters have synced and deploy GLBC components (cert-manager)
-KUBECONFIG=${KUBECONFIG_KCP_ADMIN} OUTPUT_DIR=${TEMP_DIR} ${SCRIPT_DIR}/deploy.sh -c ${GLBC_DEPLOY_COMPONENTS}
+KUBECONFIG=${KUBECONFIG_KCP_ADMIN} ${SCRIPT_DIR}/deploy.sh -k "${KUSTOMIZATION_DIR}" -c ${GLBC_DEPLOY_COMPONENTS}
 
 #6. Miscellaneous local development specific steps
 
@@ -220,7 +224,7 @@ echo "Run Option 2 (Deploy latest in KCP with monitoring enabled):"
 echo ""
 echo "       cd ${PWD}"
 echo "       export KUBECONFIG=${KUBECONFIG_KCP_ADMIN}"
-echo "       KUBECONFIG=${KUBECONFIG_KCP_ADMIN} ./utils/deploy.sh"
+echo "       KUBECONFIG=${KUBECONFIG_KCP_ADMIN} ./utils/deploy.sh -k ${KUSTOMIZATION_DIR}"
 echo "       KUBECONFIG=${KUBECONFIG} ./utils/deploy-observability.sh"
 echo ""
 echo "When glbc is running, try deploying the sample service:"
@@ -228,8 +232,8 @@ echo ""
 echo "       cd ${PWD}"
 echo "       export KUBECONFIG=${KUBECONFIG_KCP_ADMIN}"
 echo "       ./bin/kubectl-kcp ws '~'"
-echo "       kubectl apply -f tmp/kubernetes-root-kuadrant-apibinding.yaml"
-echo "       kubectl apply -f tmp/glbc-apibinding.yaml"
+echo "       kubectl apply -f ${KUSTOMIZATION_DIR}/kcp-glbc/apiexports/root-kuadrant-kubernetes-apibinding.yaml"
+echo "       kubectl apply -f ${KUSTOMIZATION_DIR}/kcp-glbc/apiexports/root-kuadrant-glbc-apibinding.yaml"
 echo "       kubectl apply -f samples/echo-service/echo.yaml"
 echo ""
 read -p "Press enter to exit -> It will kill the KCP process running in background"

@@ -24,8 +24,8 @@ source "${DEPLOY_SCRIPT_DIR}"/.startUtils
 #Workspace
 GLBC_WORKSPACE=root:kuadrant
 
-#Workload clusters
-: ${GLBC_WORKLOAD_CLUSTER_NAME:=glbc}
+#Syn Targets
+: ${GLBC_SYNC_TARGET_NAME:=glbc}
 
 : ${KCP_VERSION:="release-0.7"}
 KCP_SYNCER_IMAGE="ghcr.io/kcp-dev/kcp/syncer:${KCP_VERSION}"
@@ -33,7 +33,7 @@ KCP_SYNCER_IMAGE="ghcr.io/kcp-dev/kcp/syncer:${KCP_VERSION}"
 # GLBC Deployment
 GLBC_NAMESPACE=kcp-glbc
 DEPLOY_COMPONENTS=glbc,cert-manager
-GLBC_KUSTOMIZATION=${KCP_GLBC_DIR}/config/deploy/local
+KUSTOMIZATION_DIR=${KCP_GLBC_DIR}/config/deploy/local
 
 ############################################################
 # Help                                                     #
@@ -46,7 +46,7 @@ help()
   echo "Syntax: deploy.sh [-c|k|m|n|h|w]"
   echo "options:"
   echo "c     Components to deploy (default: ${DEPLOY_COMPONENTS})"
-  echo "k     GLBC deployment kustomization directory (default: ${GLBC_KUSTOMIZATION})"
+  echo "k     GLBC deployment kustomization directory, must contain a kcp-glbc and cert-manager sub directory (default: ${KUSTOMIZATION_DIR})"
   echo "n     Namespace glbc is being deployed into (default: ${GLBC_NAMESPACE})"
   echo "h     Print this Help."
   echo "w     Workspace to deploy glbc into (default: ${GLBC_WORKSPACE})."
@@ -69,22 +69,23 @@ print_env()
    echo "  GLBC_WORKSPACE:                   ${GLBC_WORKSPACE}"
    echo "  GLBC_EXPORT_NAME:                 ${GLBC_EXPORT_NAME}"
    echo
-   echo "Workload clusters:"
+   echo "Sync Targets:"
    echo
-   echo "  GLBC_WORKLOAD_CLUSTER_NAME:       ${GLBC_WORKLOAD_CLUSTER_NAME}"
-   echo "  GLBC_USER_WORKLOAD_CLUSTER_NAME:  ${GLBC_USER_WORKLOAD_CLUSTER_NAME}"
+   echo "  GLBC_SYNC_TARGET_NAME:            ${GLBC_SYNC_TARGET_NAME}"
    echo "  KCP_SYNCER_IMAGE:                 ${KCP_SYNCER_IMAGE}"
    echo
    echo "GLBC Deployment:"
    echo
    echo "  GLBC_NAMESPACE:                   ${GLBC_NAMESPACE}"
    echo "  DEPLOY_COMPONENTS:                ${DEPLOY_COMPONENTS}"
-   echo "  GLBC_KUSTOMIZATION:               ${GLBC_KUSTOMIZATION}"
+   echo "  KUSTOMIZATION_DIR:                ${KUSTOMIZATION_DIR}"
+   echo "  KCP_GLBC_KUSTOMIZATION_DIR:       ${KCP_GLBC_KUSTOMIZATION_DIR}"
+   echo "  CERT_MANAGER_KUSTOMIZATION_DIR:   ${CERT_MANAGER_KUSTOMIZATION_DIR}"
+   echo "  SYNC_TARGETS_DIR:                 ${SYNC_TARGETS_DIR}"
    echo
    echo "Misc:"
    echo
    echo "  WAIT_WC_READY                     ${WAIT_WC_READY}"
-   echo "  OUTPUT_DIR                        ${OUTPUT_DIR}"
    echo "  KUBECTL_KCP_BIN                   ${KUBECTL_KCP_BIN}"
    echo
 }
@@ -113,12 +114,12 @@ create_ns() {
 }
 
 create_sync_target() {
-  kubectl get synctargets ${GLBC_WORKLOAD_CLUSTER_NAME} || {
+  kubectl get synctargets ${GLBC_SYNC_TARGET_NAME} || {
     echo "Creating workload cluster '${1}'"
-    ${KUBECTL_KCP_BIN} workload sync ${1} --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${OUTPUT_DIR}/${1}-syncer.yaml
+    ${KUBECTL_KCP_BIN} workload sync ${1} --kcp-namespace kcp-syncer --syncer-image=${KCP_SYNCER_IMAGE} --resources=ingresses.networking.k8s.io,services --output-file ${SYNC_TARGETS_DIR}/${1}-syncer.yaml
     echo "Apply the following syncer config to the intended physical cluster."
     echo ""
-    echo "   kubectl apply -f ${OUTPUT_DIR}/${1}-syncer.yaml"
+    echo "   kubectl apply -f ${SYNC_TARGETS_DIR}/${1}-syncer.yaml"
     echo ""
   }
   kubectl annotate --overwrite synctarget ${1} featuregates.experimental.workload.kcp.dev/advancedscheduling='true'
@@ -135,7 +136,7 @@ create_sync_target() {
 deploy_cert_manager() {
   echo "Deploying Cert Manager"
   create_ns "cert-manager"
-  kubectl apply -f ${KCP_GLBC_DIR}/config/cert-manager/cert-manager.yaml
+  ${KUSTOMIZE_BIN} build ${CERT_MANAGER_KUSTOMIZATION_DIR} | kubectl apply -f -
   echo "Waiting for Cert Manager deployments to be ready..."
   #When advancedscheduling is enabled the status check on deployments never works
   #kubectl -n cert-manager wait --timeout=300s --for=condition=Available deployments --all
@@ -146,7 +147,7 @@ deploy_glbc() {
   create_ns ${GLBC_NAMESPACE}
 
   echo "Deploying GLBC"
-  ${KUSTOMIZE_BIN} build ${GLBC_KUSTOMIZATION} | kubectl apply -f -
+  ${KUSTOMIZE_BIN} build ${KCP_GLBC_KUSTOMIZATION_DIR} | kubectl apply -f -
   echo "Waiting for GLBC deployments to be ready..."
   #When advancedscheduling is enabled the status check on deployments never works
   #kubectl -n ${GLBC_NAMESPACE} wait --timeout=300s --for=condition=Available deployments --all
@@ -162,7 +163,7 @@ while getopts "c:k:n:hw:W:" arg; do
       DEPLOY_COMPONENTS=${OPTARG}
       ;;
     k)
-      GLBC_KUSTOMIZATION=${OPTARG}
+      KUSTOMIZATION_DIR=${OPTARG}
       ;;
     n)
       GLBC_NAMESPACE=${OPTARG}
@@ -186,10 +187,11 @@ shift $((OPTIND-1))
 : ${GLBC_EXPORT_NAME:="glbc-${GLBC_WORKSPACE//:/-}"}
 
 # Misc
-# Wait for workload clusters to be ready before continuing
+# Wait for sync targets to be ready before continuing
 : ${WAIT_WC_READY:="false"}
-# Directory to output any generated files to i.e *syncer.yaml
-: ${OUTPUT_DIR:=${GLBC_KUSTOMIZATION}}
+: ${KCP_GLBC_KUSTOMIZATION_DIR:=${KUSTOMIZATION_DIR}/kcp-glbc}
+: ${CERT_MANAGER_KUSTOMIZATION_DIR:=${KUSTOMIZATION_DIR}/cert-manager}
+: ${SYNC_TARGETS_DIR:=${KUSTOMIZATION_DIR}/../sync-targets}
 
 set -e pipefail
 
@@ -206,9 +208,9 @@ ${KUBECTL_KCP_BIN} workspace use ${GLBC_WORKSPACE}
 # Create glbc sync target                                  #
 ############################################################
 
-## Create GLBC workload cluster
+## Create GLBC Sync Target
 kubectl create namespace kcp-syncer --dry-run=client -o yaml | kubectl apply -f -
-create_sync_target ${GLBC_WORKLOAD_CLUSTER_NAME}
+create_sync_target ${GLBC_SYNC_TARGET_NAME}
 
 ############################################################
 # Register APIs                                            #
@@ -217,22 +219,19 @@ create_sync_target ${GLBC_WORKLOAD_CLUSTER_NAME}
 ## Bind to compute APIs
 create_api_binding "kubernetes" "kubernetes" "${GLBC_WORKSPACE}"
 
-## Register the Pod API (required by cert-manager)
-kubectl apply -f ${KCP_GLBC_DIR}/utils/kcp-contrib/crds/pods.yaml
+## Register GLBC APIs with KCP
+${KUSTOMIZE_BIN} build ${KCP_GLBC_KUSTOMIZATION_DIR}/kcp-contrib | kubectl apply -f -
 
-## Register GLBC APIs
-kubectl apply -f ${KCP_GLBC_DIR}/utils/kcp-contrib/apiresourceschema.yaml
+## Register CertManager APIs with KCP
+${KUSTOMIZE_BIN} build ${CERT_MANAGER_KUSTOMIZATION_DIR}/kcp-contrib | kubectl apply -f -
 
-## Register CertManager APIs
-kubectl apply -f ${KCP_GLBC_DIR}/config/cert-manager/certificates-apiresourceschema.yaml
-kubectl apply -f ${KCP_GLBC_DIR}/config/cert-manager/cert-manager-apiexport.yaml
 create_api_binding "cert-manager" "cert-manager-stable" "${GLBC_WORKSPACE}"
 
 ############################################################
 # Setup GLBC APIExport                                     #
 ############################################################
 
-if OUTPUT_DIR=${OUTPUT_DIR} ${DEPLOY_SCRIPT_DIR}/create_glbc_api_export.sh -w "${GLBC_WORKSPACE}" -W "${GLBC_WORKSPACE}" -n "${GLBC_EXPORT_NAME}"; then
+if OUTPUT_DIR=${KCP_GLBC_KUSTOMIZATION_DIR}/apiexports ${DEPLOY_SCRIPT_DIR}/create_glbc_api_export.sh -w "${GLBC_WORKSPACE}" -W "${GLBC_WORKSPACE}" -n "${GLBC_EXPORT_NAME}"; then
   echo "GLBC APIExport created successfully for ${GLBC_WORKSPACE} workspace!"
 else
   echo "GLBC APIExport could not be created!"

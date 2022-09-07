@@ -8,7 +8,19 @@
 # `make generate-ld-config` creates configuration for the local dev environment so you must have ran `make local-setup` first.
 
 resources:
-  - ./cert-manager/kcp-contrib
-  - ./cert-manager
-  - ./kcp-glbc/kcp-contrib
-  - ./kcp-glbc
+  - ../../../default
+
+generatorOptions:
+  disableNameSuffixHash: true
+
+configMapGenerator:
+  - name: controller-config
+    behavior: merge
+    envs:
+      - controller-config.env
+
+secretGenerator:
+  - name: aws-credentials
+    behavior: replace
+    envs:
+      - aws-credentials.env

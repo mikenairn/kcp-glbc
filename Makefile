@@ -26,7 +26,7 @@ help: ## Display this help.
 ##@ Development
 
 .PHONY: clean
-clean: clean-ld-kubeconfig ## Clean up temporary files.
+clean: clean-ld-apiexports clean-ld-synctargets ## Clean up temporary files.
 	-rm -rf ./.kcp
 	-rm -f ./bin/*
 	-rm -rf ./tmp
@@ -120,14 +120,16 @@ uninstall: generate-crd kustomize ## Uninstall CRDs from the K8s cluster specifi
 .PHONY: deploy
 deploy: generate-crd kustomize generate-ld-config ## Deploy controller to the K8s cluster specified in ~/.kube/config.
 	cd config/manager && $(KUSTOMIZE) edit set image controller=${IMG}
-	$(KUSTOMIZE) build config/deploy/local | kubectl apply -f -
+	$(KUSTOMIZE) build config/deploy/local/kcp-glbc | kubectl apply -f -
 
 .PHONY: undeploy
 undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/config.
-	$(KUSTOMIZE) build config/deploy/local | kubectl delete -f -
+	$(KUSTOMIZE) build config/deploy/local/kcp-glbc | kubectl delete -f -
 
 ## Local Deployment
-LD_DIR=config/deploy/local
+LD_DIR=config/deploy/local/kcp-glbc
+LD_APIEXPORTS=$(LD_DIR)/apiexports
+LD_SYNC_TARGETS=$(LD_DIR)/../../sync-targets
 LD_AWS_CREDS_ENV=$(LD_DIR)/aws-credentials.env
 LD_CONTROLLER_CONFIG_ENV=$(LD_DIR)/controller-config.env
 
@@ -149,12 +151,16 @@ clean-ld-env:
 	-rm -f $(LD_AWS_CREDS_ENV)
 	-rm -f $(LD_CONTROLLER_CONFIG_ENV)
 
-.PHONY: clean-ld-kubeconfig
-clean-ld-kubeconfig:
-	-rm -f $(LD_KCP_KUBECONFIG)
+.PHONY: clean-ld-apiexports
+clean-ld-apiexports:
+	-rm -f $(LD_APIEXPORTS)/*.yaml
+
+.PHONY: clean-ld-synctargets
+clean-ld-synctargets:
+	-rm -f $(LD_SYNC_TARGETS)/*.yaml
 
 .PHONY: clean-ld-config
-clean-ld-config: clean-ld-env clean-ld-kubeconfig ## Remove local deployment files.
+clean-ld-config: clean-ld-env clean-ld-apiexports clean-ld-synctargets ## Remove local deployment files.
 
 LOCAL_SETUP_FLAGS=""
 ifeq ($(DO_BREW),true)

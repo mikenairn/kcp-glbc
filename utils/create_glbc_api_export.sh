@@ -83,7 +83,6 @@ spec:
       resource: "ingresses"
       identityHash: ${identityHash}
 EOF
-  kubectl apply view-last-applied apiexport ${name} -o yaml > ${OUTPUT_DIR}/${name}-apiexport.yaml
   kubectl wait --timeout=60s --for=condition=VirtualWorkspaceURLsReady=true apiexport $name
 }
 
@@ -115,7 +114,6 @@ spec:
       resource: "ingresses"
       identityHash: ${identityHash}
 EOF
-  kubectl apply view-last-applied apibinding ${name} -o yaml > ${OUTPUT_DIR}/${name}-apibinding.yaml
   kubectl wait --timeout=120s --for=condition=Ready=true apibinding $name
 }
 
@@ -149,7 +147,7 @@ shift $((OPTIND-1))
 #Workspace
 : ${GLBC_WORKSPACE:=root:kuadrant}
 : ${GLBC_WORKSPACE_KUBERNETES:=${GLBC_WORKSPACE}}
-: ${GLBC_EXPORT_NAME:="glbc-${GLBC_WORKSPACE_KUBERNETES//:/-}"}
+: ${GLBC_EXPORT_NAME:="glbc"}
 
 : ${OUTPUT_DIR:=${TMP_DIR}}
 
@@ -177,7 +175,7 @@ kubectl get apibinding kubernetes -o json | jq -e .status.boundResources
 # ToDo Check each resource we need actually exists
 coreAPIExportIdentityHash=$(kubectl get apibinding kubernetes -o json | jq -r .status.boundResources[0].schema.identityHash)
 
-kubectl apply view-last-applied apibinding kubernetes -o yaml > ${OUTPUT_DIR}/kubernetes-${GLBC_WORKSPACE_KUBERNETES//:/-}-apibinding.yaml
+kubectl apply view-last-applied apibinding kubernetes -o yaml > ${OUTPUT_DIR}/${GLBC_WORKSPACE_KUBERNETES//:/-}-kubernetes-apibinding.yaml
 
 ############################################################
 # Create APIExport glbc                                    #
@@ -187,9 +185,11 @@ ${KUBECTL_KCP_BIN} workspace use ${GLBC_WORKSPACE}
 
 ## Create glbc APIExport claiming resources from the kubernetes APIExport
 create_glbc_api_export "${GLBC_EXPORT_NAME}" "${coreAPIExportIdentityHash}"
+kubectl apply view-last-applied apiexport ${name} -o yaml > ${OUTPUT_DIR}/${GLBC_WORKSPACE//:/-}-glbc-apiexport.yaml
 
 ############################################################
 # Create APIBinding for glbc and core APIs                 #
 ############################################################
 
 create_glbc_api_binding "glbc" "${GLBC_EXPORT_NAME}" "${GLBC_WORKSPACE}" "${coreAPIExportIdentityHash}"
+kubectl apply view-last-applied apibinding ${name} -o yaml > ${OUTPUT_DIR}/${GLBC_WORKSPACE//:/-}-glbc-apibinding.yaml

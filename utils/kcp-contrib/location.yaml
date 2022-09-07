@@ -1,9 +1,0 @@
-apiVersion: scheduling.kcp.dev/v1alpha1
-kind: Location
-metadata:
-  name: location-1
-spec:
-  resource:
-    group: "workload.kcp.dev"
-    version: "v1alpha1"
-    resource: "synctargets"
