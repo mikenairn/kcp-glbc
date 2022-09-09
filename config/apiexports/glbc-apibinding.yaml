@@ -4,19 +4,23 @@ metadata:
   annotations: {}
   name: glbc
 spec:
-  acceptedPermissionClaims:
+  permissionClaims:
   - group: ""
     resource: secrets
+    state: "Accepted"
   - group: ""
-    identityHash: f3803ca5e0b056d8cd27ae2b2c3d949d8e5f08da37b682de2ee9974855093caa
+    identityHash: DUMMY_HASH
     resource: services
+    state: "Accepted"
   - group: apps
-    identityHash: f3803ca5e0b056d8cd27ae2b2c3d949d8e5f08da37b682de2ee9974855093caa
+    identityHash: DUMMY_HASH
     resource: deployments
+    state: "Accepted"
   - group: networking.k8s.io
-    identityHash: f3803ca5e0b056d8cd27ae2b2c3d949d8e5f08da37b682de2ee9974855093caa
+    identityHash: DUMMY_HASH
     resource: ingresses
+    state: "Accepted"
   reference:
     workspace:
-      exportName: glbc-root-kuadrant
+      exportName: glbc
       path: root:kuadrant

@@ -1,0 +1,3 @@
+resources:
+  - glbc-apibinding.yaml
+  - glbc-apiexport.yaml

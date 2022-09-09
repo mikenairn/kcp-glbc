@@ -129,7 +129,7 @@ undeploy: ## Undeploy controller from the K8s cluster specified in ~/.kube/confi
 
 ## Local Deployment
 LD_DIR=config/deploy/local/kcp-glbc
-LD_APIEXPORTS=$(LD_DIR)/apiexports
+LD_APIEXPORTS_DIR=$(LD_DIR)/apiexports/glbc
 LD_SYNC_TARGETS=$(LD_DIR)/../../sync-targets
 LD_AWS_CREDS_ENV=$(LD_DIR)/aws-credentials.env
 LD_CONTROLLER_CONFIG_ENV=$(LD_DIR)/controller-config.env
@@ -154,7 +154,8 @@ clean-ld-env:
 
 .PHONY: clean-ld-apiexports
 clean-ld-apiexports:
-	-rm -f $(LD_APIEXPORTS)/*.yaml
+	-rm -f $(LD_APIEXPORTS_DIR)/glbc-apiexport-config.env
+	-rm -f $(LD_APIEXPORTS_DIR)/glbc-apibinding.yaml
 
 .PHONY: clean-ld-synctargets
 clean-ld-synctargets:

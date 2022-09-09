@@ -2,7 +2,7 @@ apiVersion: apis.kcp.dev/v1alpha1
 kind: APIExport
 metadata:
   annotations: {}
-  name: glbc-root-kuadrant
+  name: glbc
 spec:
   latestResourceSchemas:
   - latest.dnsrecords.kuadrant.dev
@@ -11,11 +11,11 @@ spec:
   - group: ""
     resource: secrets
   - group: ""
-    identityHash: f3803ca5e0b056d8cd27ae2b2c3d949d8e5f08da37b682de2ee9974855093caa
+    identityHash: DUMMY_HASH
     resource: services
   - group: apps
-    identityHash: f3803ca5e0b056d8cd27ae2b2c3d949d8e5f08da37b682de2ee9974855093caa
+    identityHash: DUMMY_HASH
     resource: deployments
   - group: networking.k8s.io
-    identityHash: f3803ca5e0b056d8cd27ae2b2c3d949d8e5f08da37b682de2ee9974855093caa
+    identityHash: DUMMY_HASH
     resource: ingresses

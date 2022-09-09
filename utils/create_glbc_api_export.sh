@@ -58,69 +58,6 @@ print_env()
    echo "  OUTPUT_DIR                        ${OUTPUT_DIR}"
 }
 
-create_glbc_api_export() {
-  name=$1;
-  identityHash=$2;
-  cat <<EOF | kubectl apply -f -
-apiVersion: apis.kcp.dev/v1alpha1
-kind: APIExport
-metadata:
-  name: ${name}
-spec:
-  latestResourceSchemas:
-    - latest.dnsrecords.kuadrant.dev
-    - latest.domainverifications.kuadrant.dev
-  permissionClaims:
-    - group: ""
-      resource: "secrets"
-    - group: ""
-      resource: "services"
-      identityHash: ${identityHash}
-    - group: "apps"
-      resource: "deployments"
-      identityHash: ${identityHash}
-    - group: "networking.k8s.io"
-      resource: "ingresses"
-      identityHash: ${identityHash}
-EOF
-  kubectl wait --timeout=60s --for=condition=VirtualWorkspaceURLsReady=true apiexport $name
-}
-
-create_glbc_api_binding() {
-  name=$1;
-  exportName=$2;
-  path=$3;
-  identityHash=$4;
-  cat <<EOF | kubectl apply -f -
-apiVersion: apis.kcp.dev/v1alpha1
-kind: APIBinding
-metadata:
-  name: ${name}
-spec:
-  reference:
-    workspace:
-      path: ${path}
-      exportName: ${exportName}
-  permissionClaims:
-    - group: ""
-      resource: "secrets"
-      state: "Accepted"
-    - group: ""
-      resource: "services"
-      identityHash: ${identityHash}
-      state: "Accepted"
-    - group: "apps"
-      resource: "deployments"
-      identityHash: ${identityHash}
-      state: "Accepted"
-    - group: "networking.k8s.io"
-      resource: "ingresses"
-      identityHash: ${identityHash}
-      state: "Accepted"
-EOF
-  kubectl wait --timeout=120s --for=condition=Ready=true apibinding $name
-}
-
 ############################################################
 # Script Start                                             #
 ############################################################
@@ -166,8 +103,9 @@ print_env
 ## Check kube workspace has appropriate kubernetes config   #
 #############################################################
 
-${KUBECTL_KCP_BIN} workspace use ${GLBC_WORKSPACE_KUBERNETES}
+${KUBECTL_KCP_BIN} workspace use ${GLBC_WORKSPACE}
 
+## Retrieve the identityHash
 # Get the kubernetes APIBinding
 kubectl get apibinding kubernetes
 kubectl get apibinding kubernetes -o json | jq -r .status.boundResources[0].schema.identityHash
@@ -179,21 +117,9 @@ kubectl get apibinding kubernetes -o json | jq -e .status.boundResources
 # ToDo Check each resource we need actually exists
 coreAPIExportIdentityHash=$(kubectl get apibinding kubernetes -o json | jq -r .status.boundResources[0].schema.identityHash)
 
-kubectl apply view-last-applied apibinding kubernetes -o yaml > ${OUTPUT_DIR}/${GLBC_WORKSPACE_KUBERNETES//:/-}-kubernetes-apibinding.yaml
-
-############################################################
-# Create APIExport glbc                                    #
-############################################################
-
-${KUBECTL_KCP_BIN} workspace use ${GLBC_WORKSPACE}
-
-## Create glbc APIExport claiming resources from the kubernetes APIExport
-create_glbc_api_export "${GLBC_EXPORT_NAME}" "${coreAPIExportIdentityHash}"
-kubectl apply view-last-applied apiexport ${name} -o yaml > ${OUTPUT_DIR}/${GLBC_WORKSPACE//:/-}-glbc-apiexport.yaml
-
-############################################################
-# Create APIBinding for glbc and core APIs                 #
-############################################################
-
-create_glbc_api_binding "glbc" "${GLBC_EXPORT_NAME}" "${GLBC_WORKSPACE}" "${coreAPIExportIdentityHash}"
-kubectl apply view-last-applied apibinding ${name} -o yaml > ${OUTPUT_DIR}/${GLBC_WORKSPACE//:/-}-glbc-apibinding.yaml
+## Generate the apiexports env file
+export APIEXPORT_NAME=${GLBC_EXPORT_NAME}
+export APIEXPORT_PATH=${GLBC_WORKSPACE}
+export APIEXPORT_IDENTITY_HASH=${coreAPIExportIdentityHash}
+APIEXPORT_ENV=${OUTPUT_DIR}/glbc-apiexport-config.env
+envsubst '$${APIEXPORT_NAME} $${APIEXPORT_PATH} $${APIEXPORT_IDENTITY_HASH}' < ${APIEXPORT_ENV}.template > ${APIEXPORT_ENV}

@@ -1,0 +1,53 @@
+resources:
+  - ../../../../../apiexports
+
+configMapGenerator:
+  - name: glbc-apiexport-config
+    behavior: create
+    envs:
+      - glbc-apiexport-config.env
+
+replacements:
+  - source:
+      kind: ConfigMap
+      name: glbc-apiexport-config
+      version: v1
+      fieldPath: data.APIEXPORT_IDENTITY_HASH
+    targets:
+      - select:
+          kind: APIExport
+          name: glbc
+        fieldPaths:
+          - spec.permissionClaims.*.identityHash
+      - select:
+          kind: APIBinding
+          name: glbc
+        fieldPaths:
+          - spec.permissionClaims.*.identityHash
+  - source:
+      kind: ConfigMap
+      name: glbc-apiexport-config
+      version: v1
+      fieldPath: data.APIEXPORT_PATH
+    targets:
+      - select:
+          kind: APIBinding
+          name: glbc
+        fieldPaths:
+          - spec.reference.workspace.path
+  - source:
+      kind: ConfigMap
+      name: glbc-apiexport-config
+      version: v1
+      fieldPath: data.APIEXPORT_NAME
+    targets:
+      - select:
+          kind: APIBinding
+          name: glbc
+        fieldPaths:
+          - spec.reference.workspace.exportName
+      - select:
+          kind: APIExport
+          name: glbc
+        fieldPaths:
+          - metadata.name

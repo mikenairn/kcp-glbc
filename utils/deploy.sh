@@ -90,24 +90,6 @@ print_env()
    echo
 }
 
-create_api_binding() {
-  name=$1;
-  exportName=$2;
-  path=$3;
-  cat <<EOF | kubectl apply -f -
-apiVersion: apis.kcp.dev/v1alpha1
-kind: APIBinding
-metadata:
-  name: ${name}
-spec:
-  reference:
-    workspace:
-      path: ${path}
-      exportName: ${exportName}
-EOF
-  kubectl wait --timeout=60s --for=condition=Ready=true apibinding $name
-}
-
 create_ns() {
   echo "Creating namespace '${1}'"
   kubectl create namespace ${1} --dry-run=client -o yaml | kubectl apply -f -
@@ -217,27 +199,40 @@ create_sync_target ${GLBC_SYNC_TARGET_NAME}
 ############################################################
 
 ## Bind to compute APIs
-create_api_binding "kubernetes" "kubernetes" "${GLBC_WORKSPACE}"
+${KUSTOMIZE_BIN} build ${KCP_GLBC_KUSTOMIZATION_DIR}/apiexports/kubernetes | kubectl apply -f -
 
 ## Register GLBC APIs with KCP
 ${KUSTOMIZE_BIN} build ${KCP_GLBC_KUSTOMIZATION_DIR}/kcp-contrib | kubectl apply -f -
 
 ## Register CertManager APIs with KCP
-${KUSTOMIZE_BIN} build ${CERT_MANAGER_KUSTOMIZATION_DIR}/kcp-contrib | kubectl apply -f -
+${KUSTOMIZE_BIN} build --reorder none ${CERT_MANAGER_KUSTOMIZATION_DIR}/kcp-contrib | kubectl apply -f -
 
-create_api_binding "cert-manager" "cert-manager-stable" "${GLBC_WORKSPACE}"
+## Stop here if DEPLOY_COMPONENTS=none (The sync targets are likely not ready)
+if [[ $DEPLOY_COMPONENTS =~ "none" ]]; then
+  echo "Finished deploying resources. Not deploying any components as DEPLOY_COMPONENTS=${DEPLOY_COMPONENTS}."
+  exit 0
+fi
 
 ############################################################
 # Setup GLBC APIExport                                     #
 ############################################################
 
-if OUTPUT_DIR=${KCP_GLBC_KUSTOMIZATION_DIR}/apiexports ${DEPLOY_SCRIPT_DIR}/create_glbc_api_export.sh -w "${GLBC_WORKSPACE}" -W "${GLBC_WORKSPACE}" -n "${GLBC_EXPORT_NAME}"; then
+if OUTPUT_DIR=${KCP_GLBC_KUSTOMIZATION_DIR}/apiexports/glbc ${DEPLOY_SCRIPT_DIR}/create_glbc_api_export.sh -w "${GLBC_WORKSPACE}" -W "${GLBC_WORKSPACE}" -n "${GLBC_EXPORT_NAME}"; then
   echo "GLBC APIExport created successfully for ${GLBC_WORKSPACE} workspace!"
 else
   echo "GLBC APIExport could not be created!"
   # If the GLBC APIExport can't be created, we shouldn't continue to try and deploy anything!
-  exit 0
+  exit 1
 fi
+
+## Apply GLBC APIExport
+APIEXPORT_DIR=${KCP_GLBC_KUSTOMIZATION_DIR}/apiexports
+${KUSTOMIZE_BIN} build ${APIEXPORT_DIR} | kubectl apply -f -
+kubectl wait --timeout=120s --for=condition=Ready=true apibinding "glbc"
+kubectl wait --timeout=60s --for=condition=VirtualWorkspaceURLsReady=true apiexport ${GLBC_EXPORT_NAME}
+
+## Dump the APIBinding to a file for use in user workspaces locally
+${KUSTOMIZE_BIN} build ${APIEXPORT_DIR} | yq 'select(.kind == "APIBinding")' > ${APIEXPORT_DIR}/glbc/glbc-apibinding.yaml
 
 ############################################################
 # Deploy GLBC Components                                   #
