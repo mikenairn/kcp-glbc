@@ -1,0 +1,21 @@
+apiVersion: apis.kcp.dev/v1alpha1
+kind: APIExport
+metadata:
+  annotations: {}
+  name: glbc
+spec:
+  latestResourceSchemas:
+    - latest.dnsrecords.kuadrant.dev
+    - latest.domainverifications.kuadrant.dev
+  permissionClaims:
+    - group: ""
+      resource: secrets
+    - group: ""
+      identityHash: IDENTITY_HASH
+      resource: services
+    - group: apps
+      identityHash: IDENTITY_HASH
+      resource: deployments
+    - group: networking.k8s.io
+      identityHash: IDENTITY_HASH
+      resource: ingresses
