@@ -1,5 +1,6 @@
 resources:
-  - ../../../../../apiexports
+  - ../../../../../apiexports/glbc-apiexport
+  - ../../../../../apiexports/glbc-apibinding
 
 configMapGenerator:
   - name: glbc-apiexport-config
