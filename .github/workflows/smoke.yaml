@@ -1,0 +1,34 @@
+name: Smoke
+
+on: workflow_dispatch
+
+jobs:
+  smoke:
+    name: Smoke
+    environment: stable
+    runs-on: ubuntu-20.04
+    env:
+      AWS_DNS_PUBLIC_ZONE_ID: ${{ secrets.AWS_DNS_PUBLIC_ZONE_ID }}
+      GLBC_DOMAIN: ${{ secrets.GLBC_DOMAIN }}
+      GLBC_ENABLE_CUSTOM_HOSTS: false
+      GLBC_EXPORT: ${{ secrets.GLBC_EXPORT }}
+      GLBC_WORKSPACE: ${{ secrets.GLBC_WORKSPACE }}
+      TEST_WORKSPACE: ${{ secrets.TEST_WORKSPACE }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-go@v2
+        with:
+          go-version: v1.18
+      - name: Setup Kubeconfig
+        run: |
+          kubectl config --kubeconfig=test.kubeconfig set-cluster glbc --server=${{ secrets.TEST_KUBE_HOST }}
+          kubectl config --kubeconfig=test.kubeconfig set-credentials glbc --token=${{ secrets.TEST_KUBE_TOKEN }}
+          kubectl config --kubeconfig=test.kubeconfig set-context system:admin --cluster=glbc --user=glbc
+          kubectl config --kubeconfig=test.kubeconfig use-context system:admin
+          kubectl config --kubeconfig=test.kubeconfig get-contexts
+          export KUBECONFIG="$(pwd)"/test.kubeconfig
+          echo "KUBECONFIG=${KUBECONFIG}" >> $GITHUB_ENV
+      - name: Run smoke tests
+        run: |
+          export KUBECONFIG=${{ env.KUBECONFIG }}
+          make smoke
