@@ -15,17 +15,15 @@ limitations under the License.
 package support
 
 import (
-	"github.com/onsi/gomega"
-	"github.com/rs/xid"
-
 	"github.com/kcp-dev/logicalcluster/v2"
+	"github.com/onsi/gomega"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 func createTestNamespace(t Test, options ...Option) *corev1.Namespace {
-	name := "test-" + xid.New().String()
+	name := GenerateName("test-ns-")
 
 	namespace := &corev1.Namespace{
 		TypeMeta: metav1.TypeMeta{

@@ -18,8 +18,6 @@ import (
 	"fmt"
 
 	"github.com/onsi/gomega"
-	"github.com/rs/xid"
-
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -104,7 +102,7 @@ func WorkspacePhase(workspace *tenancyv1beta1.Workspace) tenancyv1alpha1.Cluster
 }
 
 func createTestWorkspace(t Test) *tenancyv1beta1.Workspace {
-	name := "test-" + xid.New().String()
+	name := GenerateName("test-ws-")
 
 	workspace := &tenancyv1beta1.Workspace{
 		ObjectMeta: metav1.ObjectMeta{

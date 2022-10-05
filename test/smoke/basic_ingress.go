@@ -20,11 +20,8 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/rs/xid"
-
 	. "github.com/onsi/gomega"
 	. "github.com/onsi/gomega/gstruct"
-
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -38,7 +35,7 @@ import (
 )
 
 func createTestIngress(t Test, namespace *corev1.Namespace, serviceName string) *networkingv1.Ingress {
-	name := "test-" + xid.New().String()
+	name := GenerateName("test-ing-")
 
 	ingress, err := t.Client().Core().Cluster(logicalcluster.From(namespace)).NetworkingV1().Ingresses(namespace.Name).
 		Apply(t.Ctx(), IngressConfiguration(namespace.Name, name, serviceName,"test.glbc.com"), ApplyOptions)

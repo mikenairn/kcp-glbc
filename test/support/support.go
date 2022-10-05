@@ -15,10 +15,12 @@ limitations under the License.
 package support
 
 import (
+	"fmt"
 	"os"
 	"time"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	utilrand "k8s.io/apimachinery/pkg/util/rand"
 
 	"github.com/kcp-dev/logicalcluster/v2"
 
@@ -35,6 +37,10 @@ const (
 	testWorkspaceName            = "TEST_WORKSPACE"
 	glbcWorkspaceName            = "GLBC_WORKSPACE"
 	glbcExportName               = "GLBC_EXPORT"
+
+	maxNameLength          = 63
+	randomLength           = 5
+	MaxGeneratedNameLength = maxNameLength - randomLength
 )
 
 var (
@@ -51,4 +57,12 @@ func getEnvLogicalClusterName(key string, fallback logicalcluster.Name) logicalc
 		return fallback
 	}
 	return logicalcluster.New(value)
+}
+
+// GenerateName Borrowed from https://github.com/kubernetes/apiserver/blob/v0.25.2/pkg/storage/names/generate.go
+func GenerateName(base string) string {
+	if len(base) > MaxGeneratedNameLength {
+		base = base[:MaxGeneratedNameLength]
+	}
+	return fmt.Sprintf("%s%s", base, utilrand.String(randomLength))
 }
