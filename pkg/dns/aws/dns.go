@@ -22,12 +22,15 @@ const (
 	// chinaRoute53Endpoint is the Route 53 service endpoint used for AWS China regions.
 	chinaRoute53Endpoint = "https://route53.amazonaws.com.cn"
 
-	ProviderSpecificEvaluateTargetHealth = "aws/evaluate-target-health"
-	ProviderSpecificWeight               = "aws/weight"
-	ProviderSpecificRegion               = "aws/region"
-	ProviderSpecificFailover             = "aws/failover"
-	ProviderSpecificMultiValueAnswer     = "aws/multi-value-answer"
-	ProviderSpecificHealthCheckID        = "aws/health-check-id"
+	ProviderSpecificEvaluateTargetHealth       = "aws/evaluate-target-health"
+	ProviderSpecificWeight                     = "aws/weight"
+	ProviderSpecificRegion                     = "aws/region"
+	ProviderSpecificFailover                   = "aws/failover"
+	ProviderSpecificGeolocationContinentCode   = "aws/geolocation-continent-code"
+	ProviderSpecificGeolocationCountryCode     = "aws/geolocation-country-code"
+	ProviderSpecificGeolocationSubdivisionCode = "aws/geolocation-subdivision-code"
+	ProviderSpecificMultiValueAnswer           = "aws/multi-value-answer"
+	ProviderSpecificHealthCheckID              = "aws/health-check-id"
 )
 
 // Inspired by https://github.com/openshift/cluster-ingress-operator/blob/master/pkg/dns/aws/dns.go
@@ -186,7 +189,7 @@ func (p *Provider) updateRecord(record *v1.DNSRecord, zoneID, action string) err
 }
 
 func (p *Provider) changeForEndpoint(endpoint *v1.Endpoint, action string) (*route53.Change, error) {
-	if endpoint.RecordType != string(v1.ARecordType) {
+	if endpoint.RecordType != string(v1.ARecordType) && endpoint.RecordType != string(v1.CNAMERecordType) {
 		return nil, fmt.Errorf("unsupported record type %s", endpoint.RecordType)
 	}
 	domain, targets := endpoint.DNSName, endpoint.Targets
@@ -204,7 +207,7 @@ func (p *Provider) changeForEndpoint(endpoint *v1.Endpoint, action string) (*rou
 
 	resourceRecordSet := &route53.ResourceRecordSet{
 		Name:            aws.String(endpoint.DNSName),
-		Type:            aws.String(route53.RRTypeA),
+		Type:            aws.String(endpoint.RecordType),
 		TTL:             aws.Int64(int64(endpoint.RecordTTL)),
 		ResourceRecords: resourceRecords,
 	}
@@ -229,6 +232,26 @@ func (p *Provider) changeForEndpoint(endpoint *v1.Endpoint, action string) (*rou
 	if _, ok := endpoint.GetProviderSpecificProperty(ProviderSpecificMultiValueAnswer); ok {
 		resourceRecordSet.MultiValueAnswer = aws.Bool(true)
 	}
+
+	var geolocation = &route53.GeoLocation{}
+	useGeolocation := false
+	if prop, ok := endpoint.GetProviderSpecificProperty(ProviderSpecificGeolocationContinentCode); ok {
+		geolocation.ContinentCode = aws.String(prop.Value)
+		useGeolocation = true
+	} else {
+		if prop, ok := endpoint.GetProviderSpecificProperty(ProviderSpecificGeolocationCountryCode); ok {
+			geolocation.CountryCode = aws.String(prop.Value)
+			useGeolocation = true
+		}
+		if prop, ok := endpoint.GetProviderSpecificProperty(ProviderSpecificGeolocationSubdivisionCode); ok {
+			geolocation.SubdivisionCode = aws.String(prop.Value)
+			useGeolocation = true
+		}
+	}
+	if useGeolocation {
+		resourceRecordSet.GeoLocation = geolocation
+	}
+
 	if prop, ok := endpoint.GetProviderSpecificProperty(ProviderSpecificHealthCheckID); ok {
 		resourceRecordSet.HealthCheckId = aws.String(prop.Value)
 	}
