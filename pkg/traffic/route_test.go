@@ -159,6 +159,12 @@ func TestGetDNSTargetsRoute(t *testing.T) {
 					Cluster:    targetCluster,
 					TargetType: dns.TargetTypeHost,
 					Value:      targetHost,
+					TargetAttributes: dns.TargetAttributes{
+						Geo: dns.GeoAttributes{
+							Continent:     dns.DEFAULT_GEO_ATTRIBUTE_CONTINENT,
+							ContinentCode: dns.DEFAULT_GEO_ATTRIBUTE_CONTINENT_CODE,
+						},
+					},
 				}
 
 				if !containsTarget(t, expectedTarget) {
@@ -208,6 +214,12 @@ func TestGetDNSTargetsRoute(t *testing.T) {
 						Cluster:    targetCluster,
 						TargetType: dns.TargetTypeHost,
 						Value:      targetHost,
+						TargetAttributes: dns.TargetAttributes{
+							Geo: dns.GeoAttributes{
+								Continent:     dns.DEFAULT_GEO_ATTRIBUTE_CONTINENT,
+								ContinentCode: dns.DEFAULT_GEO_ATTRIBUTE_CONTINENT_CODE,
+							},
+						},
 					}
 
 					if !containsTarget(t, expectedTarget) {

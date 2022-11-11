@@ -138,6 +138,10 @@ func (a *Route) GetDNSTargets() ([]dns.Target, error) {
 		return dnsTargets, err
 	}
 	for cluster, status := range statuses {
+		targetAttributes, err := getTargetAttributes()
+		if err != nil {
+			return nil, err
+		}
 		for _, ingress := range status.Ingress {
 			host := ""
 			// with a Route it is always a host
@@ -148,7 +152,7 @@ func (a *Route) GetDNSTargets() ([]dns.Target, error) {
 			} else {
 				return nil, fmt.Errorf("no usable host value on route (%v) status", a.Name)
 			}
-			target := dns.Target{Value: host, TargetType: dns.TargetTypeHost, Cluster: cluster.String()}
+			target := dns.Target{Value: host, TargetType: dns.TargetTypeHost, Cluster: cluster.String(), TargetAttributes: *targetAttributes}
 			dnsTargets = append(dnsTargets, target)
 		}
 	}

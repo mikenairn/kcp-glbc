@@ -128,8 +128,12 @@ func (a *Ingress) GetDNSTargets() ([]dns.Target, error) {
 	}
 	dnsTargets := []dns.Target{}
 	for cluster, status := range statuses {
+		targetAttributes, err := getTargetAttributes()
+		if err != nil {
+			return nil, err
+		}
 		for _, lb := range status.LoadBalancer.Ingress {
-			dnsTarget := dns.Target{}
+			dnsTarget := dns.Target{TargetAttributes: *targetAttributes}
 			dnsTarget.Cluster = cluster.String()
 			if lb.IP != "" {
 				dnsTarget.TargetType = dns.TargetTypeIP

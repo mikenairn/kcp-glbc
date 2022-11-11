@@ -294,6 +294,12 @@ func TestGetDNSTargetsIngress(t *testing.T) {
 					Cluster:    targetCluster,
 					TargetType: dns.TargetTypeHost,
 					Value:      targetHost,
+					TargetAttributes: dns.TargetAttributes{
+						Geo: dns.GeoAttributes{
+							Continent:     dns.DEFAULT_GEO_ATTRIBUTE_CONTINENT,
+							ContinentCode: dns.DEFAULT_GEO_ATTRIBUTE_CONTINENT_CODE,
+						},
+					},
 				}
 				if !containsTarget(targets, expectedTarget) {
 					return fmt.Errorf("dns target %v not present", expectedTarget)
@@ -344,6 +350,12 @@ func TestGetDNSTargetsIngress(t *testing.T) {
 						Cluster:    targetCluster,
 						TargetType: dns.TargetTypeHost,
 						Value:      targetHost,
+						TargetAttributes: dns.TargetAttributes{
+							Geo: dns.GeoAttributes{
+								Continent:     dns.DEFAULT_GEO_ATTRIBUTE_CONTINENT,
+								ContinentCode: dns.DEFAULT_GEO_ATTRIBUTE_CONTINENT_CODE,
+							},
+						},
 					}
 
 					if !containsTarget(targets, expectedTarget) {
@@ -396,6 +408,12 @@ func TestGetDNSTargetsIngress(t *testing.T) {
 						Cluster:    targetCluster,
 						TargetType: dns.TargetTypeIP,
 						Value:      targetHost,
+						TargetAttributes: dns.TargetAttributes{
+							Geo: dns.GeoAttributes{
+								Continent:     dns.DEFAULT_GEO_ATTRIBUTE_CONTINENT,
+								ContinentCode: dns.DEFAULT_GEO_ATTRIBUTE_CONTINENT_CODE,
+							},
+						},
 					}
 
 					if !containsTarget(targets, expectedTarget) {

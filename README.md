@@ -35,7 +35,7 @@ The e2e tests can be executed locally by running the following commands:
 
 Start KCP and create KinD clusters
 ```bash
-make local-setup
+make local-setup CREATE_KIND_ROUTE_SYNC_TARGET=true
 ```
 
 #### Terminal 2

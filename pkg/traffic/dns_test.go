@@ -94,16 +94,27 @@ func TestDNSReconciler(t *testing.T) {
 			if dns == nil {
 				return fmt.Errorf("did not expect a nil dns record")
 			}
-			if len(expectedIPs) != len(dns.Spec.Endpoints) {
-				return fmt.Errorf("expected %d endpoints but got %d ", len(expectedIPs), len(dns.Spec.Endpoints))
-			}
+			endpointsA := []*v1.Endpoint{}
+			endpointsCNAME := []*v1.Endpoint{}
 			for _, ep := range dns.Spec.Endpoints {
-				if len(ep.Targets) != len(expectedIPs) {
-					return fmt.Errorf("expected only 1 dns Target but got %d", len(ep.Targets))
+				if ep.RecordType == "A" {
+					endpointsA = append(endpointsA, ep)
+				} else if ep.RecordType == "CNAME" {
+					endpointsCNAME = append(endpointsCNAME, ep)
+				} else {
+					return fmt.Errorf("expected an A or CNAME record but got %s", ep.RecordType)
 				}
-				if ep.RecordType != "A" {
-					return fmt.Errorf("expected an A record but got %s", ep.RecordType)
-				}
+			}
+
+			if len(expectedIPs) != len(endpointsA) {
+				return fmt.Errorf("expected %v A Record endpoints but got %v", len(expectedIPs), len(endpointsA))
+			}
+
+			if len(expectedIPs) > 0 && len(endpointsCNAME) < 2 {
+				return fmt.Errorf("expected at least 2 CNAME Record endpoints but got %v", len(endpointsCNAME))
+			}
+
+			for _, ep := range endpointsA {
 				for _, ip := range expectedIPs {
 					if !slice.ContainsString(ep.Targets, ip) {
 						return fmt.Errorf("ip %s not in targets ", ip)
@@ -330,6 +341,66 @@ func Test_awsEndpointWeight(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := awsEndpointWeight(tt.args.numIPs); got != tt.want {
 				t.Errorf("awsEndpointWeight() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestGetContinentHost(t *testing.T) {
+	type args struct {
+		host          string
+		continentCode string
+	}
+	tests := []struct {
+		name string
+		args args
+		want string
+	}{
+		{
+			name: "valid host",
+			args: args{
+				host:          "test.example.com",
+				continentCode: "NA",
+			},
+			want: "test.na.example.com",
+		},
+		{
+			name: "empty host",
+			args: args{
+				host:          "",
+				continentCode: "NA",
+			},
+			want: "",
+		},
+		{
+			name: "empty continent code",
+			args: args{
+				host:          "test.example.com",
+				continentCode: "",
+			},
+			want: "test.example.com",
+		},
+		{
+			name: "short host",
+			args: args{
+				host:          "example.com",
+				continentCode: "NA",
+			},
+			want: "example.com",
+		},
+		{
+			name: "long host",
+			args: args{
+				host:          "test.x.y.z.example.com",
+				continentCode: "NA",
+			},
+			want: "test.na.x.y.z.example.com",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := GetContinentHost(tt.args.host, tt.args.continentCode); got != tt.want {
+				t.Errorf("GetContinentHost() = %v, want %v", got, tt.want)
 			}
 		})
 	}

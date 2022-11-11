@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/go-logr/logr"
+	"github.com/rs/xid"
 	"k8s.io/apimachinery/pkg/api/equality"
 	k8errors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/meta"
@@ -20,8 +21,6 @@ import (
 	"github.com/kcp-dev/logicalcluster/v2"
 
 	workload "github.com/kcp-dev/kcp/pkg/apis/workload/v1alpha1"
-	"github.com/rs/xid"
-
 	"github.com/kuadrant/kcp-glbc/pkg/_internal/metadata"
 	"github.com/kuadrant/kcp-glbc/pkg/_internal/slice"
 	v1 "github.com/kuadrant/kcp-glbc/pkg/apis/kuadrant/v1"
@@ -77,8 +76,6 @@ func (r *DnsReconciler) Reconcile(ctx context.Context, accessor Interface) (Reco
 		return ReconcileStatusContinue, nil
 	}
 	// If it does exist, update it
-	activeDNSTargetIPs := map[string][]string{}
-	deletingTargetIPs := map[string][]string{}
 	managedHost := metadata.GetAnnotation(existing, ANNOTATION_HCG_HOST)
 	if managedHost == "" {
 		// This covers upgrade scenario: checking traffic object for the generated host label and updating DNS record with it
@@ -98,28 +95,12 @@ func (r *DnsReconciler) Reconcile(ctx context.Context, accessor Interface) (Reco
 	var activeLBHosts []string
 	for _, target := range targets {
 		host := target.Value
-		deleteAnnotation := workload.InternalClusterDeletionTimestampAnnotationPrefix + target.Cluster
-		if metadata.HasAnnotation(accessor, deleteAnnotation) {
-			deletingTargetIPs[host] = append(deletingTargetIPs[host], host)
-			continue
+		if target.TargetType == dns.TargetTypeHost {
+			//add the host to host watcher to keep our DNS upto date
+			// If it is not an IP we add it to the host watcher that triggers an update when it gets IPS
+			r.WatchHost(ctx, key, host)
+			activeLBHosts = append(activeLBHosts, host)
 		}
-		if target.TargetType == dns.TargetTypeIP {
-			activeDNSTargetIPs[host] = append(activeDNSTargetIPs[host], host)
-			continue
-		}
-
-		// for a non ip value look up the DNS
-		addr, err := r.DNSLookup(ctx, host)
-		if err != nil {
-			return ReconcileStatusContinue, fmt.Errorf("DNSLookup failed for host %s : %s", host, err)
-		}
-		for _, add := range addr {
-			activeDNSTargetIPs[host] = append(activeDNSTargetIPs[host], add.IP.String())
-		}
-		//add the host to host watcher to keep our DNS upto date
-		// If it is not an IP we add it to the host watcher that triggers an update when it gets IPS
-		r.WatchHost(ctx, key, host)
-		activeLBHosts = append(activeLBHosts, host)
 	}
 
 	// clean up any watchers no longer needed TODO(cbrookes) we may want to put this in a defer or a different routine so it always cleans up
@@ -130,13 +111,12 @@ func (r *DnsReconciler) Reconcile(ctx context.Context, accessor Interface) (Reco
 		}
 	}
 
-	// no non-deleting hosts have an IP yet, so continue using IPs of "losing" clusters
-	if len(activeDNSTargetIPs) == 0 && len(deletingTargetIPs) > 0 {
-		r.Log.V(3).Info("setting the dns Target to the deleting Target as no new dns targets set yet")
-		activeDNSTargetIPs = deletingTargetIPs
-	}
 	copyDNS := existing.DeepCopy()
-	r.setEndpointFromTargets(managedHost, activeDNSTargetIPs, copyDNS)
+	err = r.setEndpointsFromTargets(ctx, accessor, targets, copyDNS)
+	if err != nil {
+		return ReconcileStatusContinue, err
+	}
+
 	objMeta, err := meta.Accessor(accessor)
 	if err != nil {
 		return ReconcileStatusContinue, err
@@ -208,34 +188,118 @@ func copyHealthAnnotations(dnsRecord *v1.DNSRecord, objectMeta metav1.Object) {
 	}))
 }
 
-func (r *DnsReconciler) setEndpointFromTargets(dnsName string, dnsTargets map[string][]string, dnsRecord *v1.DNSRecord) {
-	currentEndpoints := make(map[string]*v1.Endpoint, len(dnsRecord.Spec.Endpoints))
-	for _, endpoint := range dnsRecord.Spec.Endpoints {
-		address, ok := endpoint.GetAddress()
-		if !ok {
+// GeoContinentIPs continent code -> array of ips
+type GeoContinentIPs = map[string][]string
+
+// GeoContinents array of codes
+type GeoContinents = []string
+
+func (r *DnsReconciler) appendTargetContinentIPs(ctx context.Context, target dns.Target, continentIPs GeoContinentIPs) (GeoContinentIPs, error) {
+
+	host := target.Value
+	ips := []string{}
+	if target.TargetType == dns.TargetTypeIP {
+		ips = append(ips, host)
+	}
+	if target.TargetType == dns.TargetTypeHost {
+		// for a non ip value look up the DNS
+		addr, err := r.DNSLookup(ctx, host)
+		if err != nil {
+			return continentIPs, fmt.Errorf("DNSLookup failed for host %s : %s", host, err)
+		}
+		for _, add := range addr {
+			ips = append(ips, add.IP.String())
+		}
+	}
+
+	if len(ips) > 0 {
+		continentCode := target.TargetAttributes.Geo.ContinentCode
+		if continentCode == "" {
+			continentCode = dns.DEFAULT_GEO_ATTRIBUTE_CONTINENT_CODE
+			r.Log.V(3).Info("no continent code found for target, using default", "continentCode", continentCode)
+		}
+
+		if continentIPs[continentCode] == nil {
+			continentIPs[continentCode] = ips
+		}
+	}
+
+	return continentIPs, nil
+}
+
+func (r *DnsReconciler) getContinentIPsFromTargets(ctx context.Context, accessor Interface, dnsTargets []dns.Target) (continentIPs GeoContinentIPs, continentCodes GeoContinents, err error) {
+	continentIPs = GeoContinentIPs{}
+	deletingContinentIPs := GeoContinentIPs{}
+	for _, target := range dnsTargets {
+		deleteAnnotation := workload.InternalClusterDeletionTimestampAnnotationPrefix + target.Cluster
+		if metadata.HasAnnotation(accessor, deleteAnnotation) {
+			deletingContinentIPs, _ = r.appendTargetContinentIPs(ctx, target, deletingContinentIPs)
 			continue
 		}
-		currentEndpoints[address] = endpoint
+		continentIPs, err = r.appendTargetContinentIPs(ctx, target, continentIPs)
+		if err != nil {
+			return continentIPs, continentCodes, err
+		}
+	}
+
+	// no non-deleting hosts have an IP yet, so continue using IPs of "losing" clusters
+	if len(continentIPs) == 0 && len(deletingContinentIPs) > 0 {
+		r.Log.V(3).Info("setting the dns Target to the deleting Target as no new dns targets set yet")
+		continentIPs = deletingContinentIPs
+	}
+
+	continentCodes = make([]string, 0, len(continentIPs))
+	for k := range continentIPs {
+		continentCodes = append(continentCodes, k)
+	}
+	sort.Strings(continentCodes)
+
+	return continentIPs, continentCodes, err
+}
+
+func (r *DnsReconciler) setEndpointsFromTargets(ctx context.Context, accessor Interface, dnsTargets []dns.Target, dnsRecord *v1.DNSRecord) error {
+	r.Log.V(3).Info("setEndpointsFromTargets", "dnsTargets", dnsTargets)
+
+	continentIPs, continentCodes, err := r.getContinentIPsFromTargets(ctx, accessor, dnsTargets)
+	if err != nil {
+		return err
+	}
+	r.Log.V(3).Info("setEndpointsFromTargets", "continentIPs", continentIPs, "continentCodes", continentCodes)
+
+	currentEndpoints := make(map[string]*v1.Endpoint, len(dnsRecord.Spec.Endpoints))
+	for _, endpoint := range dnsRecord.Spec.Endpoints {
+		currentEndpoints[endpoint.SetID()] = endpoint
 	}
 	var (
 		newEndpoints []*v1.Endpoint
 		endpoint     *v1.Endpoint
 	)
-	ok := false
-	for _, targets := range dnsTargets {
-		for _, target := range targets {
-			// If the endpoint for this target does not exist, add a new one
-			if endpoint, ok = currentEndpoints[target]; !ok {
-				endpoint = &v1.Endpoint{
-					SetIdentifier: target,
-				}
+	dnsName := accessor.GetHCGHost()
+	for continentCode, ips := range continentIPs {
+		//Create Geo Location CNAME record for continent targeting continent specific host
+		continentHost := GetContinentHost(dnsName, continentCode)
+		endpoint = createOrUpdateEndpoint(dnsName, []string{continentHost}, v1.CNAMERecordType, continentHost, 60, currentEndpoints)
+		endpoint.SetProviderSpecific(aws.ProviderSpecificGeolocationContinentCode, continentCode)
+		newEndpoints = append(newEndpoints, endpoint)
+
+		if continentCode == continentCodes[0] {
+			//Create default Geo Location CNAME record pointing to the first known active continent targeting continent specific host
+			endpoint = createOrUpdateEndpoint(dnsName, []string{continentHost}, v1.CNAMERecordType, "default", 60, currentEndpoints)
+			endpoint.SetProviderSpecific(aws.ProviderSpecificGeolocationCountryCode, "*")
+			newEndpoints = append(newEndpoints, endpoint)
+		}
+
+		for _, ip := range ips {
+			//Create weighted A Record for each IP in this continent
+			targetID := fmt.Sprintf("%s.%s", strings.ToLower(continentCode), ip)
+			weight := awsEndpointWeight(len(ips))
+			endpoint = createOrUpdateEndpoint(continentHost, []string{ip}, v1.ARecordType, targetID, 60, currentEndpoints)
+			endpoint.ProviderSpecific = v1.ProviderSpecific{
+				{
+					Name:  aws.ProviderSpecificWeight,
+					Value: weight,
+				},
 			}
-			// Update the endpoint fields
-			endpoint.DNSName = dnsName
-			endpoint.RecordType = "A"
-			endpoint.Targets = []string{target}
-			endpoint.RecordTTL = 60
-			endpoint.SetProviderSpecific(aws.ProviderSpecificWeight, awsEndpointWeight(len(targets)))
 			newEndpoints = append(newEndpoints, endpoint)
 		}
 	}
@@ -244,7 +308,40 @@ func (r *DnsReconciler) setEndpointFromTargets(dnsName string, dnsTargets map[st
 		return newEndpoints[i].Targets[0] < newEndpoints[j].Targets[0]
 	})
 
+	r.Log.V(3).Info("setEndpointsFromTargets", "newEndpoints", newEndpoints)
 	dnsRecord.Spec.Endpoints = newEndpoints
+	return nil
+}
+
+// GetContinentHost returns a continent specific host for the given host and continent code.
+//
+// i.e. host=x.y.com, continentCode=NA = x.na.y.com
+//
+// If the inputs are invalid the unmodified host is returned.
+func GetContinentHost(host, continentCode string) string {
+	p := strings.Split(host, ".")
+	if len(p) <= 2 || continentCode == "" {
+		return host
+	}
+	first := p[0]
+	copy(p, p[1:])
+	p = p[:len(p)-1]
+	return fmt.Sprintf("%s.%s.%s", first, strings.ToLower(continentCode), strings.Join(p, "."))
+}
+
+func createOrUpdateEndpoint(dnsName string, targets v1.Targets, recordType v1.DNSRecordType, setIdentifier string,
+	recordTTL v1.TTL, currentEndpoints map[string]*v1.Endpoint) (endpoint *v1.Endpoint) {
+	ok := false
+	if endpoint, ok = currentEndpoints[setIdentifier]; !ok {
+		endpoint = &v1.Endpoint{
+			SetIdentifier: setIdentifier,
+		}
+	}
+	endpoint.DNSName = dnsName
+	endpoint.RecordType = string(recordType)
+	endpoint.Targets = targets
+	endpoint.RecordTTL = recordTTL
+	return endpoint
 }
 
 // awsEndpointWeight returns the weight Value for a single AWS record in a set of records where the traffic is split

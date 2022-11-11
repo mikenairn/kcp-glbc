@@ -201,7 +201,7 @@ func TestIngress(t *testing.T) {
 	test.Eventually(DNSRecord(test, namespace, name)).Should(And(
 		// ensure the ingress certificate is marked as ready when the DNSrecord is created
 		WithTransform(DNSRecordToCertReady(test, namespace), Equal("ready")),
-		WithTransform(DNSRecordEndpoints, HaveLen(1)),
+		WithTransform(DNSRecordEndpoints, HaveLen(3)),
 		WithTransform(Annotations, And(
 			HaveKey(traffic.ANNOTATION_HCG_HOST),
 		)),

@@ -83,6 +83,11 @@ func getSyncTargets(obj metav1.Object) []string {
 	return clusters
 }
 
+func getTargetAttributes() (*dns.TargetAttributes, error) {
+	//ToDo Add implementation to retrieve sync target attributes
+	return dns.NewTargetAttributes(), nil
+}
+
 type Pending struct {
 	Rules []networkingv1.IngressRule `json:"rules"`
 }
