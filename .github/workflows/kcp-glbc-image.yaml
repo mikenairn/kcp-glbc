@@ -11,12 +11,12 @@ on:
 env:
   IMG_TAGS: ${{ github.ref_name }}
   IMG_REGISTRY_HOST: quay.io
-  IMG_REGISTRY_ORG: kuadrant
+  IMG_REGISTRY_ORG: mnairn
   MAIN_BRANCH_NAME: main
 
 jobs:
   build:
-    if: github.repository_owner == 'kcp-dev'
+#    if: github.repository_owner == 'kcp-dev'
     name: Build and Publish KCP GLBC Image
     runs-on: ubuntu-20.04
     outputs:
@@ -64,28 +64,3 @@ jobs:
           password: ${{ secrets.IMG_REGISTRY_TOKEN }}
       - name: Print Image URL
         run: echo "Image pushed to ${{ steps.push-to-quay.outputs.registry-paths }}"
-
-  update-hcg-unstable:
-    if: "github.repository_owner == 'kcp-dev' && github.ref_name == 'main'"
-    name: Update HCG unstable
-    runs-on: ubuntu-20.04
-    needs: build
-    steps:
-      - uses: actions/checkout@v3
-        with:
-          repository: redhat-cps/glbc-deployments
-          ref: 'main'
-          ssh-key: ${{ secrets.ACTIONS_GITHUB_TOKEN }}
-      - name: Install kustomize
-        run: make kustomize
-      - name: Setup git config
-        run: |
-          git config user.name "GitHub Actions Bot"
-          git config user.email "<kuadrant.dev@redhat.com>"
-      - name: Update glbc image
-        run: |
-          cd kcp-stable/root:redhat-hcg:unstable/kcp-glbc && ../../../bin/kustomize edit set image quay.io/kuadrant/kcp-glbc=${{ needs.build.outputs.controller_image }}
-      - run: |
-          git add ./kcp-stable/root\:redhat-hcg\:unstable/kcp-glbc/kustomization.yaml
-          git commit -m "Update glbc image to ${{ needs.build.outputs.controller_image }}"
-          git push origin main
